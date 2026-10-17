@@ -2,7 +2,7 @@
 import argparse
 from datetime import date, timedelta
 
-from maxine.ingest import betnhl, nhl, odds
+from maxine.ingest import betnhl, nhl, odds, odds_backfill
 from maxine.validate import validate_season
 from maxine.warehouse import load
 from maxine.warehouse.db import connect
@@ -28,6 +28,11 @@ def cmd_odds(args):
         print(lg, odds.snapshot(lg))
 
 
+def cmd_odds_backfill(args):
+    con = connect()
+    print(odds_backfill.run(con, args.seasons, dry_run=args.dry_run, reserve=args.reserve))
+
+
 def cmd_betnhl(args):
     day = date.fromisoformat(args.date) if args.date else date.today()
     print(betnhl.snapshot(day))
@@ -37,6 +42,7 @@ def cmd_load(_args):
     con = connect()
     print("nhl", load.load_nhl(con))
     print("odds rows", load.load_odds(con))
+    print("historical odds rows", load.load_odds_hist(con))
     print("betnhl picks", load.load_betnhl(con))
 
 
@@ -91,6 +97,12 @@ def main():
     s = sub.add_parser("odds", help="snapshot current odds (uses API credits)")
     s.add_argument("--league", choices=["nhl", "ahl", "all"], default="all")
     s.set_defaults(func=cmd_odds)
+
+    s = sub.add_parser("odds-backfill", help="historical NHL odds for loaded seasons (paid plan; run `maxine load` first)")
+    s.add_argument("seasons", nargs="*", type=int, default=list(reversed(BACKFILL_SEASONS)))
+    s.add_argument("--dry-run", action="store_true", help="count snapshots and credits, spend nothing")
+    s.add_argument("--reserve", type=int, default=3000, help="stop before credits remaining drop below this")
+    s.set_defaults(func=cmd_odds_backfill)
 
     s = sub.add_parser("betnhl", help="snapshot a BetNHL tips page")
     s.add_argument("--date", help="YYYY-MM-DD, default today")

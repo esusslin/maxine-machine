@@ -4,16 +4,17 @@ from maxine.ingest import nhl
 
 def rebuilt_standings(con, season: int) -> dict[str, dict]:
     rows = con.execute("""
-        SELECT home, away, home_score, away_score, last_period_type
+        SELECT home, away, home_score, away_score, last_period_type, COALESCE(ot_empty_net_loss, FALSE)
         FROM games WHERE league = 'NHL' AND season = ? AND game_type = 2
     """, [season]).fetchall()
     table: dict[str, dict] = {}
-    for home, away, hs, as_, period in rows:
+    for home, away, hs, as_, period, en_loss in rows:
         for team in (home, away):
             table.setdefault(team, {"gp": 0, "w": 0, "l": 0, "otl": 0})
         winner, loser = (home, away) if hs > as_ else (away, home)
         table[winner]["w"] += 1
-        table[loser]["otl" if period in ("OT", "SO") else "l"] += 1
+        # OT/SO loss earns a point, except when the loser pulled its goalie in OT and gave up the winner
+        table[loser]["otl" if period in ("OT", "SO") and not en_loss else "l"] += 1
         table[home]["gp"] += 1
         table[away]["gp"] += 1
     for t in table.values():

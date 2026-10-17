@@ -12,8 +12,11 @@ CREATE TABLE IF NOT EXISTS games (
     home_score       INTEGER,
     away_score       INTEGER,
     last_period_type VARCHAR,               -- REG, OT, SO
-    venue            VARCHAR
+    venue            VARCHAR,
+    ot_empty_net_loss BOOLEAN               -- loser pulled its goalie in OT and gave up the winner: no OT point
 );
+
+ALTER TABLE games ADD COLUMN IF NOT EXISTS ot_empty_net_loss BOOLEAN;
 
 CREATE TABLE IF NOT EXISTS team_games (
     game_id  BIGINT NOT NULL,

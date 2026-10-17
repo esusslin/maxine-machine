@@ -61,6 +61,23 @@ def parse_pbp(pbp: dict) -> list[tuple]:
     return rows
 
 
+def ot_empty_net_loss(pbp: dict) -> bool:
+    """True when the deciding goal came in overtime into an empty net.
+
+    NHL rule: a team that pulls its goalie in OT and loses gets no point (a regulation-style loss).
+    """
+    goals = [p for p in pbp.get("plays", []) if p.get("typeDescKey") == "goal"]
+    if not goals:
+        return False
+    last = goals[-1]
+    in_ot = (last.get("periodDescriptor") or {}).get("periodType") == "OT"
+    return in_ot and (last.get("details") or {}).get("goalieInNetId") is None
+
+
+GAME_COLS = ("game_id, league, season, game_type, game_date, start_utc, home, away, home_team_id, away_team_id, "
+             "home_score, away_score, last_period_type, venue, ot_empty_net_loss")
+
+
 def load_nhl(con) -> dict:
     n_games = n_shots = 0
     for path in sorted((RAW_DIR / "nhl" / "boxscore").glob("*.json")):
@@ -71,14 +88,16 @@ def load_nhl(con) -> dict:
         gid = game[0]
         for table in ("games", "team_games", "goalie_games"):
             con.execute(f"DELETE FROM {table} WHERE game_id = ?", [gid])
-        con.execute("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", game)
+        pbp_path = RAW_DIR / "nhl" / "pbp" / path.name
+        pbp = json.loads(pbp_path.read_text()) if pbp_path.exists() else None
+        en_loss = ot_empty_net_loss(pbp) if pbp else None
+        con.execute(f"INSERT INTO games ({GAME_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (*game, en_loss))
         con.executemany("INSERT INTO team_games VALUES (?,?,?,?,?)", teams)
         if goalies:
             con.executemany("INSERT INTO goalie_games VALUES (?,?,?,?,?,?,?,?,?,?)", goalies)
         n_games += 1
-        pbp_path = RAW_DIR / "nhl" / "pbp" / path.name
-        if pbp_path.exists():
-            shots = parse_pbp(json.loads(pbp_path.read_text()))
+        if pbp:
+            shots = parse_pbp(pbp)
             con.execute("DELETE FROM shots WHERE game_id = ?", [gid])
             if shots:
                 con.executemany("INSERT INTO shots VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", shots)
@@ -110,6 +129,22 @@ def load_odds(con) -> int:
             rows = parse_odds_snapshot(payload, league_dir.name)
             if rows:
                 con.executemany("INSERT INTO odds_snapshots VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+            n += len(rows)
+    return n
+
+
+def load_odds_hist(con) -> int:
+    """Historical snapshots: taken_at is the snapshot time The Odds API returns, not the time requested."""
+    n = 0
+    for league_dir in sorted((RAW_DIR / "odds_hist").glob("*")):
+        for path in sorted(league_dir.glob("*.json")):
+            doc = json.loads(path.read_text())
+            payload = {"taken_at": doc["timestamp"], "data": doc.get("data", [])}
+            con.execute("DELETE FROM odds_snapshots WHERE taken_at = ? AND league = ?",
+                        [payload["taken_at"], league_dir.name])
+            rows = parse_odds_snapshot(payload, league_dir.name)
+            if rows:
+                con.executemany("INSERT OR IGNORE INTO odds_snapshots VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
             n += len(rows)
     return n
 

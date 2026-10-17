@@ -8,7 +8,7 @@ import duckdb
 
 from maxine.ingest.betnhl import extract_picks, tip_url
 from maxine.validate import rebuilt_standings
-from maxine.warehouse.load import parse_boxscore, parse_pbp
+from maxine.warehouse.load import ot_empty_net_loss, parse_boxscore, parse_pbp
 
 BOX = {
     "id": 2024020001, "season": 20242025, "gameType": 2, "gameDate": "2024-10-04",
@@ -55,14 +55,25 @@ def test_parse_pbp_keeps_only_shot_events():
 def test_rebuilt_standings_points():
     con = duckdb.connect()
     con.execute("CREATE TABLE games (league VARCHAR, season INT, game_type INT, home VARCHAR, away VARCHAR,"
-                " home_score INT, away_score INT, last_period_type VARCHAR)")
-    con.executemany("INSERT INTO games VALUES ('NHL', 20242025, 2, ?, ?, ?, ?, ?)", [
-        ("NJD", "BUF", 4, 1, "REG"),   # NJD W, BUF L
-        ("BUF", "NJD", 3, 2, "SO"),    # BUF W, NJD OTL
+                " home_score INT, away_score INT, last_period_type VARCHAR, ot_empty_net_loss BOOLEAN)")
+    con.executemany("INSERT INTO games VALUES ('NHL', 20242025, 2, ?, ?, ?, ?, ?, ?)", [
+        ("NJD", "BUF", 4, 1, "REG", False),   # NJD W, BUF L
+        ("BUF", "NJD", 3, 2, "SO", False),    # BUF W, NJD OTL
+        ("MIN", "VGK", 1, 2, "OT", True),     # VGK W, MIN pulled goalie in OT: L, no point
     ])
     t = rebuilt_standings(con, 20242025)
     assert t["NJD"] == {"gp": 2, "w": 1, "l": 0, "otl": 1, "pts": 3}
     assert t["BUF"] == {"gp": 2, "w": 1, "l": 1, "otl": 0, "pts": 2}
+    assert t["MIN"] == {"gp": 1, "w": 0, "l": 1, "otl": 0, "pts": 0}
+
+
+def test_ot_empty_net_loss():
+    def pbp(period_type, goalie):
+        return {"plays": [{"typeDescKey": "goal", "periodDescriptor": {"periodType": period_type},
+                           "details": {"goalieInNetId": goalie}}]}
+    assert ot_empty_net_loss(pbp("OT", None)) is True
+    assert ot_empty_net_loss(pbp("OT", 8470594)) is False
+    assert ot_empty_net_loss(pbp("REG", None)) is False      # regulation empty-netter is a normal loss anyway
 
 
 def test_betnhl_url():
