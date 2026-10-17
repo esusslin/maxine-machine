@@ -1,0 +1,27 @@
+[project]
+name = "maxine-machine"
+version = "0.1.0"
+description = "Daily hockey game prediction engine: NHL, AHL, ECHL, NCAA"
+requires-python = ">=3.10"
+dependencies = [
+  "httpx>=0.27",
+  "duckdb>=1.0",
+  "python-dotenv>=1.0",
+  "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+maxine = "maxine.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+maxine = ["warehouse/*.sql"]
