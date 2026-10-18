@@ -3,7 +3,7 @@ import argparse
 from datetime import date, timedelta
 
 from maxine.ingest import betnhl, nhl, odds, odds_backfill
-from maxine import backtest, market
+from maxine import backtest, clv, market
 from maxine.models import xg
 from maxine.validate import validate_season
 from maxine.warehouse import load
@@ -80,6 +80,11 @@ def cmd_backtest(_args):
     backtest.print_report(backtest.run(con))
 
 
+def cmd_clv(_args):
+    con = connect()
+    clv.print_report(clv.run(con))
+
+
 def cmd_daily(_args):
     """Yesterday's results + today's odds and BetNHL picks, then load. Run once each morning."""
     today = date.today()
@@ -143,6 +148,9 @@ def main():
 
     s = sub.add_parser("backtest", help="walk-forward scorecard: Elo and baselines vs the closing line")
     s.set_defaults(func=cmd_backtest)
+
+    s = sub.add_parser("clv", help="edge test: line movement toward the model and ROI at the morning line")
+    s.set_defaults(func=cmd_clv)
 
     s = sub.add_parser("daily", help="morning job: results, odds, BetNHL picks, load")
     s.set_defaults(func=cmd_daily)
