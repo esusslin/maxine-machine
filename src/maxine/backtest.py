@@ -6,7 +6,8 @@ those that have a closing line.
 """
 import math
 
-from maxine.models import elo
+from maxine import features
+from maxine.models import elo, winprob
 
 EPS = 1e-6
 
@@ -25,7 +26,7 @@ def calibration(pairs: list[tuple[float, int]], bins: int = 10) -> list[tuple[st
         lo, hi = b / bins, (b + 1) / bins
         sel = [(p, y) for p, y in pairs if lo <= p < hi or (b == bins - 1 and p == 1.0)]
         if sel:
-            out.append((f"{lo:.1f}-{hi:.1f}", len(sel), round(sum(p for p, _ in sel) / len(sel), 3),
+            out.append((f"{lo:.1f}-{hi:.1f}", len(sel), round(float(sum(p for p, _ in sel)) / len(sel), 3),
                         round(sum(y for _, y in sel) / len(sel), 3)))
     return out
 
@@ -74,17 +75,29 @@ def run(con, warmup_season: int = 20212022) -> dict:
         seen += 1
     models = {"home_rate": home_base, **models}
 
+    has_xg = con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'shot_xg'").fetchone()[0]
+    coefs = {}
+    if has_xg:
+        wp, coefs = winprob.walk_forward(features.game_features(con), first_test_season=seasons[0])
+        models["shot_model"] = wp
+        models = {k: models[k] for k in ["home_rate", "elo_default", "elo_tuned", "shot_model", "market_open", "market_close"]}
+
+    def scored(g):  # same games for every model: closing line exists and every model has a prediction
+        return g[0] in market and all(g[0] in preds for preds in models.values())
+
     by_season = {}
     for season in seasons:
-        sg = [g for g in games if g[1] == season and g[0] in market]
+        sg = [g for g in games if g[1] == season and scored(g)]
         by_season[season] = {name: _metrics([(preds[g[0]], int(g[4] > g[5])) for g in sg])
                              for name, preds in models.items()}
-    test_games = [g for g in games if g[1] in test and g[0] in market]
+    test_games = [g for g in games if g[1] in test and scored(g)]
     overall_test = {name: _metrics([(preds[g[0]], int(g[4] > g[5])) for g in test_games])
                     for name, preds in models.items()}
-    calib = calibration([(models["elo_tuned"][g[0]], int(g[4] > g[5])) for g in test_games])
+    best = "shot_model" if "shot_model" in models else "elo_default"
+    calib = calibration([(models[best][g[0]], int(g[4] > g[5])) for g in test_games])
     return {"tuned_params": tuned, "train_seasons": sorted(train), "test_seasons": sorted(test),
-            "by_season": by_season, "test_overall": overall_test, "elo_tuned_calibration_test": calib}
+            "by_season": by_season, "test_overall": overall_test, "calibration_model": best,
+            "calibration_test": calib, "shot_model_coefs": coefs}
 
 
 def print_report(r: dict) -> None:
@@ -100,6 +113,14 @@ def print_report(r: dict) -> None:
     print("\nTest seasons combined")
     for name, m in r["test_overall"].items():
         print(f"  {name:<14}{m['n']:>6}{m['log_loss']:>10}{m['brier']:>8}{m['accuracy']:>7}")
-    print("\nElo (tuned) calibration, test seasons: bin, games, predicted, actual")
-    for row in r["elo_tuned_calibration_test"]:
+    close = r["test_overall"]["market_close"]["log_loss"]
+    print("\nGap to closing line, test seasons (Phase 2 gate: under 0.005)")
+    for name, m in r["test_overall"].items():
+        if name != "market_close":
+            print(f"  {name:<14}{m['log_loss'] - close:+.4f}")
+    print(f"\n{r['calibration_model']} calibration, test seasons: bin, games, predicted, actual")
+    for row in r["calibration_test"]:
         print("  ", row)
+    if r["shot_model_coefs"]:
+        last = max(r["shot_model_coefs"])
+        print(f"\nshot_model coefficients (standardized), fit for {last}: {r['shot_model_coefs'][last]}")

@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from maxine.ingest import betnhl, nhl, odds, odds_backfill
 from maxine import backtest, market
+from maxine.models import xg
 from maxine.validate import validate_season
 from maxine.warehouse import load
 from maxine.warehouse.db import connect
@@ -69,6 +70,11 @@ def cmd_market(_args):
     print(market.build_closing_lines(con))
 
 
+def cmd_xg(_args):
+    con = connect()
+    print(xg.score_shots(con))
+
+
 def cmd_backtest(_args):
     con = connect()
     backtest.print_report(backtest.run(con))
@@ -131,6 +137,9 @@ def main():
 
     s = sub.add_parser("market", help="build opening/closing no-vig lines per game from odds snapshots")
     s.set_defaults(func=cmd_market)
+
+    s = sub.add_parser("xg", help="fit the expected-goals model walk-forward and score every unblocked shot")
+    s.set_defaults(func=cmd_xg)
 
     s = sub.add_parser("backtest", help="walk-forward scorecard: Elo and baselines vs the closing line")
     s.set_defaults(func=cmd_backtest)
