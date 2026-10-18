@@ -81,3 +81,10 @@ CREATE TABLE IF NOT EXISTS betnhl_picks (
     extractor            VARCHAR,
     PRIMARY KEY (pick_date, idx)
 );
+
+CREATE TABLE IF NOT EXISTS loaded_files (
+    kind       VARCHAR NOT NULL,      -- nhl_game, odds_live, odds_hist
+    key        VARCHAR NOT NULL,      -- file name (or league/file name)
+    signature  VARCHAR NOT NULL,      -- size:mtime of the raw file(s); a change triggers a reload
+    PRIMARY KEY (kind, key)
+);

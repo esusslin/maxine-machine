@@ -38,11 +38,13 @@ def cmd_betnhl(args):
     print(betnhl.snapshot(day))
 
 
-def cmd_load(_args):
+def cmd_load(args):
     con = connect()
+    if getattr(args, "full", False):
+        load.reset_loaded(con)
     print("nhl", load.load_nhl(con))
-    print("odds rows", load.load_odds(con))
-    print("historical odds rows", load.load_odds_hist(con))
+    print("live odds", load.load_odds(con))
+    print("historical odds", load.load_odds_hist(con))
     print("betnhl picks", load.load_betnhl(con))
 
 
@@ -108,7 +110,8 @@ def main():
     s.add_argument("--date", help="YYYY-MM-DD, default today")
     s.set_defaults(func=cmd_betnhl)
 
-    s = sub.add_parser("load", help="parse all raw files into the DuckDB warehouse")
+    s = sub.add_parser("load", help="parse new or changed raw files into the DuckDB warehouse")
+    s.add_argument("--full", action="store_true", help="re-parse every raw file, not just new ones")
     s.set_defaults(func=cmd_load)
 
     s = sub.add_parser("validate", help="Phase 0 gate: rebuilt standings vs official")
