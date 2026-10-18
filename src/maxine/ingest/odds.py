@@ -23,8 +23,9 @@ def snapshot(league: str) -> dict:
         "apiKey": _require_key(), "regions": REGIONS, "markets": MARKETS,
         "oddsFormat": "decimal", "dateFormat": "iso",
     }, min_interval=1.0)
-    taken_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
-    path = raw_path("odds", league, f"{taken_at}.json")
+    now = datetime.now(timezone.utc)
+    taken_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    path = raw_path("odds", league, f"{now.strftime('%Y-%m-%dT%H-%M-%SZ')}.json")
     payload = {
         "taken_at": taken_at,
         "sport": sport,

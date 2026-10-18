@@ -3,6 +3,7 @@ import argparse
 from datetime import date, timedelta
 
 from maxine.ingest import betnhl, nhl, odds, odds_backfill
+from maxine import backtest, market
 from maxine.validate import validate_season
 from maxine.warehouse import load
 from maxine.warehouse.db import connect
@@ -63,6 +64,16 @@ def cmd_validate(args):
     raise SystemExit(1 if failed else 0)
 
 
+def cmd_market(_args):
+    con = connect()
+    print(market.build_closing_lines(con))
+
+
+def cmd_backtest(_args):
+    con = connect()
+    backtest.print_report(backtest.run(con))
+
+
 def cmd_daily(_args):
     """Yesterday's results + today's odds and BetNHL picks, then load. Run once each morning."""
     today = date.today()
@@ -117,6 +128,12 @@ def main():
     s = sub.add_parser("validate", help="Phase 0 gate: rebuilt standings vs official")
     s.add_argument("seasons", nargs="*", type=int, default=BACKFILL_SEASONS)
     s.set_defaults(func=cmd_validate)
+
+    s = sub.add_parser("market", help="build opening/closing no-vig lines per game from odds snapshots")
+    s.set_defaults(func=cmd_market)
+
+    s = sub.add_parser("backtest", help="walk-forward scorecard: Elo and baselines vs the closing line")
+    s.set_defaults(func=cmd_backtest)
 
     s = sub.add_parser("daily", help="morning job: results, odds, BetNHL picks, load")
     s.set_defaults(func=cmd_daily)
