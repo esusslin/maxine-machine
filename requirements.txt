@@ -1,0 +1,2 @@
+# Railway installs the package itself; dependencies are declared in pyproject.toml.
+.

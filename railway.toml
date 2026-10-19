@@ -1,0 +1,11 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+restartPolicyType = "on_failure"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+
+# IMPORTANT: keep replicas at 1.
+# SQLite and DuckDB on a mounted volume corrupt with concurrent writers.
+numReplicas = 1

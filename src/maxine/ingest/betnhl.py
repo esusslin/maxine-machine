@@ -55,3 +55,28 @@ def snapshot(day: date) -> dict:
     raw_path("betnhl", f"{day.isoformat()}.picks.json").write_text(
         json.dumps({"date": day.isoformat(), "url": url, "extractor": "v0", "picks": picks}, indent=2))
     return {"url": url, "picks": len(picks), "html": str(html_path)}
+
+
+def backfill(start: date, end: date) -> dict:
+    """Save every daily tips page between two dates (2 s between requests). Missing days are skipped.
+
+    Raw HTML is kept, so the pick extractor can be improved and re-run without re-downloading.
+    """
+    import httpx
+    from datetime import timedelta
+
+    saved = missing = skipped = 0
+    day = start
+    while day <= end:
+        if raw_path("betnhl", f"{day.isoformat()}.html").exists():
+            skipped += 1
+        else:
+            try:
+                snapshot(day)
+                saved += 1
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 404:
+                    raise
+                missing += 1
+        day += timedelta(days=1)
+    return {"saved": saved, "missing_or_no_post": missing, "already_had": skipped}

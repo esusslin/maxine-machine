@@ -2,7 +2,9 @@
 
 Prices every NHL regular-season game starting in the next `hours` hours, against current odds.
 A game is "clean" when neither team plays before it (matching the backtested early-line edge, where
-all model inputs were known at bet time). Picks = clean games with edge >= min_edge.
+all model inputs were known at bet time). Picks = clean games on a LATER date than today with
+edge >= min_edge: the backtest found an edge on the day-before line only, none on game-day lines.
+Run in the evening, once books have posted tomorrow's lines. Today's games are shown for reference.
 The starting goalie is not used (usually unknown this early). Picks are logged for paper trading.
 """
 import json
@@ -104,12 +106,14 @@ def run(con, hours: int = 36, min_edge: float = 0.05) -> dict:
     board["best_price"] = board["best_home_price"].where(home, board["best_away_price"])
     board["best_book"] = board["best_home_book"].where(home, board["best_away_book"])
     board["med_price"] = board["med_home_price"].where(home, board["med_away_price"])
-    board["is_pick"] = board["clean"] & (board["edge"] >= min_edge)
+    board["early"] = pd.to_datetime(board["game_date"]).dt.date > date.today()
+    board["is_pick"] = board["clean"] & board["early"] & (board["edge"] >= min_edge)
     picks = board[board["is_pick"]].copy()
     picks["logged_at"] = snap["path"].rsplit("/", 1)[-1].removesuffix(".json")
     log_dir = DATA_DIR / "picks"
     log_dir.mkdir(parents=True, exist_ok=True)
-    cols = ["logged_at", "game_id", "start_utc", "home", "away", "side", "pick_team", "p_model", "p_market",
+    picks["line_type"] = "early"
+    cols = ["logged_at", "line_type", "game_id", "start_utc", "home", "away", "side", "pick_team", "p_model", "p_market",
             "edge", "best_price", "best_book", "med_price", "books"]
     if not picks.empty:
         out = picks[cols].copy()
@@ -128,7 +132,7 @@ def print_report(r: dict) -> None:
         print("No upcoming regular-season games in the window.")
         return
     print(f"odds credits remaining: {r.get('credits_remaining')}\n")
-    print(f"{'start (PT)':<17}{'game':<12}{'model':>7}{'market':>8}{'edge':>7}  {'lean':<5}{'best price':>11}  {'book':<14}{'clean':<6}{'PICK'}")
+    print(f"{'start (PT)':<17}{'game':<12}{'model':>7}{'market':>8}{'edge':>7}  {'lean':<5}{'best price':>11}  {'book':<14}{'clean':<6}{'line':<9}{'PICK'}")
     for b in board.sort_values("start_utc").itertuples():
         start = b.start_utc.tz_convert("America/Los_Angeles").strftime("%a %m-%d %H:%M")
         game = f"{b.away}@{b.home}"
@@ -136,6 +140,9 @@ def print_report(r: dict) -> None:
             print(f"{start:<17}{game:<12}{b.p_model:>7.3f}{'no line':>8}")
             continue
         print(f"{start:<17}{game:<12}{b.p_model:>7.3f}{b.p_market:>8.3f}{b.edge:>+7.3f}  {b.pick_team:<5}"
-              f"{b.best_price:>11.2f}  {b.best_book:<14}{'yes' if b.clean else 'no':<6}{'<== PICK' if b.is_pick else ''}")
+              f"{b.best_price:>11.2f}  {b.best_book:<14}{'yes' if b.clean else 'no':<6}"
+              f"{'early' if b.early else 'game-day':<9}{'<== PICK' if b.is_pick else ''}")
     n = len(r["picks"])
-    print(f"\n{n} pick(s) logged to data/picks/" if n else "\nNo picks today (no clean game with edge >= threshold).")
+    print(f"\n{n} pick(s) logged to data/picks/" if n else
+          "\nNo picks (needs a clean game on a later date with a posted line and edge >= threshold).")
+    print("Game-day lines are shown for reference only: the backtest found no edge on them.")

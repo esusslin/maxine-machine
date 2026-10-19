@@ -3,7 +3,7 @@ import argparse
 from datetime import date, timedelta
 
 from maxine.ingest import betnhl, nhl, odds, odds_backfill
-from maxine import backtest, clv, market, picks
+from maxine import backtest, clv, market, picks, scorecard
 from maxine.models import xg
 from maxine.validate import validate_season
 from maxine.warehouse import load
@@ -38,6 +38,10 @@ def cmd_odds_backfill(args):
 def cmd_betnhl(args):
     day = date.fromisoformat(args.date) if args.date else date.today()
     print(betnhl.snapshot(day))
+
+
+def cmd_betnhl_backfill(args):
+    print(betnhl.backfill(date.fromisoformat(args.start), date.fromisoformat(args.end)))
 
 
 def cmd_load(args):
@@ -90,6 +94,11 @@ def cmd_picks(args):
     picks.print_report(picks.run(con, hours=args.hours, min_edge=args.min_edge))
 
 
+def cmd_scorecard(_args):
+    con = connect()
+    print("wrote", scorecard.write(con))
+
+
 def cmd_daily(_args):
     """Yesterday's results + today's odds and BetNHL picks, then load. Run once each morning."""
     today = date.today()
@@ -137,6 +146,11 @@ def main():
     s.add_argument("--date", help="YYYY-MM-DD, default today")
     s.set_defaults(func=cmd_betnhl)
 
+    s = sub.add_parser("betnhl-backfill", help="save BetNHL tips pages for a date range (YYYY-MM-DD YYYY-MM-DD)")
+    s.add_argument("start")
+    s.add_argument("end")
+    s.set_defaults(func=cmd_betnhl_backfill)
+
     s = sub.add_parser("load", help="parse new or changed raw files into the DuckDB warehouse")
     s.add_argument("--full", action="store_true", help="re-parse every raw file, not just new ones")
     s.set_defaults(func=cmd_load)
@@ -161,6 +175,9 @@ def main():
     s.add_argument("--hours", type=int, default=36, help="price games starting within this many hours")
     s.add_argument("--min-edge", type=float, default=0.05, help="minimum edge for a pick")
     s.set_defaults(func=cmd_picks)
+
+    s = sub.add_parser("scorecard", help="write reports/scorecard.json (backtest + CLV) for the web Model tab")
+    s.set_defaults(func=cmd_scorecard)
 
     s = sub.add_parser("daily", help="morning job: results, odds, BetNHL picks, load")
     s.set_defaults(func=cmd_daily)
