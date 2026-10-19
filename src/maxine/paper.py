@@ -28,6 +28,7 @@ def store_picks(picks: pd.DataFrame) -> int:
             "side": p.side, "pick_team": p.pick_team, "p_model": float(p.p_model),
             "p_market": float(p.p_market), "edge": float(p.edge), "best_price": float(p.best_price),
             "best_book": p.best_book, "med_price": float(p.med_price), "books": int(p.books),
+            "line_type": getattr(p, "line_type", "early"),
         })
     with db() as conn:
         before = conn.total_changes
@@ -92,16 +93,22 @@ def grade(con) -> int:
     return graded
 
 
-def summary() -> dict:
-    rows = [dict(r) for r in query("SELECT * FROM paper_picks ORDER BY start_utc DESC")]
+def _record(rows: list[dict]) -> dict:
     settled = [r for r in rows if r["result"]]
     with_clv = [r for r in rows if r["clv"] is not None]
+    return {"bets": len(settled), "wins": sum(r["result"] == "W" for r in settled),
+            "units": round(sum(r["profit"] for r in settled), 2),
+            "roi": round(sum(r["profit"] for r in settled) / len(settled), 4) if settled else None,
+            "avg_clv": round(sum(r["clv"] for r in with_clv) / len(with_clv), 4) if with_clv else None,
+            "beat_close_pct": round(sum(r["clv"] > 0 for r in with_clv) / len(with_clv), 3) if with_clv else None,
+            "open": len(rows) - len(settled)}
+
+
+def summary() -> dict:
+    rows = [dict(r) for r in query("SELECT * FROM paper_picks ORDER BY start_utc DESC")]
     return {
         "picks": rows,
-        "record": {"bets": len(settled), "wins": sum(r["result"] == "W" for r in settled),
-                   "units": round(sum(r["profit"] for r in settled), 2),
-                   "roi": round(sum(r["profit"] for r in settled) / len(settled), 4) if settled else None,
-                   "avg_clv": round(sum(r["clv"] for r in with_clv) / len(with_clv), 4) if with_clv else None,
-                   "beat_close_pct": round(sum(r["clv"] > 0 for r in with_clv) / len(with_clv), 3) if with_clv else None,
-                   "open": len(rows) - len(settled)},
+        "record": _record(rows),
+        "by_line": {lt: _record([r for r in rows if (r.get("line_type") or "early") == lt])
+                    for lt in ("early", "game-day")},
     }

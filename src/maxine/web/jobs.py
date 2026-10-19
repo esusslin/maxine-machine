@@ -2,7 +2,8 @@
 
     03:30  results + xG + grade paper picks
     10:00  BetNHL daily tips snapshot
-    18:30  early-line picks for tomorrow (stores the board and new paper picks)
+    09:30  picks: today's games on the morning line (game-day picks, if GAME_DAY_PICKS) + tomorrow
+    18:30  picks: tomorrow's early line (+ any of today's games not started, if GAME_DAY_PICKS)
     every 15 min, 09:00-20:45  closing-price capture, only when a picked game is about to start
     hourly heartbeat
 First boot with an empty warehouse: backfill five NHL seasons from the free NHL API (about 2 hours).
@@ -77,18 +78,19 @@ def results_and_grade() -> None:
 
 
 def run_picks() -> dict:
-    with job_run("early_line_picks") as ctx:
+    with job_run("picks") as ctx:
         con = connect()
         try:
-            r = picks.run(con, hours=36, min_edge=settings.MIN_EDGE)
+            r = picks.run(con, hours=36, min_edge=settings.MIN_EDGE, game_day=settings.GAME_DAY_PICKS)
         finally:
             con.close()
         board = r["board"]
         cols = ["game_id", "game_date", "start_utc", "home", "away", "p_model", "p_market", "edge", "side",
-                "pick_team", "best_price", "best_book", "med_price", "books", "clean", "early", "is_pick"]
+                "pick_team", "best_price", "best_book", "med_price", "books", "clean", "early", "line_type", "is_pick"]
         records = [] if board.empty else [{c: _clean(row.get(c)) for c in cols}
                                           for row in board.to_dict("records")]
-        set_kv("board", json.dumps({"records": records, "min_edge": settings.MIN_EDGE}))
+        set_kv("board", json.dumps({"records": records, "min_edge": settings.MIN_EDGE,
+                                    "game_day_picks": settings.GAME_DAY_PICKS}))
         if r.get("credits_remaining") is not None:
             set_kv("odds_credits_remaining", str(r["credits_remaining"]))
         stored = paper.store_picks(r["picks"]) if not r["picks"].empty else 0
@@ -123,7 +125,8 @@ def betnhl_snapshot() -> dict:
 JOBS = [
     (results_and_grade, "cron", dict(hour=3, minute=30), "results_and_grade"),
     (betnhl_snapshot, "cron", dict(hour=10, minute=0), "betnhl_snapshot"),
-    (run_picks, "cron", dict(hour=18, minute=30), "early_line_picks"),
+    (run_picks, "cron", dict(hour=9, minute=30), "picks_morning"),
+    (run_picks, "cron", dict(hour=18, minute=30), "picks_evening"),
     (capture_closes, "cron", dict(hour="9-20", minute="*/15"), "capture_closes"),
     (heartbeat, "interval", dict(minutes=60), "heartbeat"),
 ]

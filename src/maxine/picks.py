@@ -1,14 +1,17 @@
 """Evening picks at the early line.
 
 Prices every NHL regular-season game starting in the next `hours` hours, against current odds.
-A game is "clean" when neither team plays before it (matching the backtested early-line edge, where
-all model inputs were known at bet time). Picks = clean games on a LATER date than today with
-edge >= min_edge: the backtest found an edge on the day-before line only, none on game-day lines.
-Run in the evening, once books have posted tomorrow's lines. Today's games are shown for reference.
+A game is "clean" when neither team plays before it (all model inputs known at bet time).
+Two kinds of pick, tracked separately:
+  early     clean games on a later date than today (Pacific). The backtest found an edge here.
+  game-day  clean games today, when game_day=True. The backtest found NO edge here (2023-26, edge >= 5%:
+            1,081 bets, line moved our way 51%, ROI -0.8%); they are logged so the live record can say
+            whether that holds.
 The starting goalie is not used (usually unknown this early). Picks are logged for paper trading.
 """
 import json
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -21,6 +24,7 @@ from maxine.warehouse import load
 
 PICK_FEATURES = [f for f in features.FEATURES if f != "gsax30_diff"]
 CURRENT_SEASON = 20262027
+PACIFIC = ZoneInfo("America/Los_Angeles")
 
 
 def catch_up(con) -> dict:
@@ -78,7 +82,7 @@ def market_now(snap: dict) -> pd.DataFrame:
     return agg.merge(best_a.rename(columns={"ap": "best_away_price", "book": "best_away_book"}), on=["home", "away", "commence"])
 
 
-def run(con, hours: int = 36, min_edge: float = 0.05) -> dict:
+def run(con, hours: int = 36, min_edge: float = 0.05, game_day: bool = False) -> dict:
     status = catch_up(con)
     fx = fixtures(hours)
     if fx.empty:
@@ -106,13 +110,15 @@ def run(con, hours: int = 36, min_edge: float = 0.05) -> dict:
     board["best_price"] = board["best_home_price"].where(home, board["best_away_price"])
     board["best_book"] = board["best_home_book"].where(home, board["best_away_book"])
     board["med_price"] = board["med_home_price"].where(home, board["med_away_price"])
-    board["early"] = pd.to_datetime(board["game_date"]).dt.date > date.today()
-    board["is_pick"] = board["clean"] & board["early"] & (board["edge"] >= min_edge)
+    today_pt = datetime.now(PACIFIC).date()
+    board["early"] = pd.to_datetime(board["game_date"]).dt.date > today_pt
+    board["line_type"] = board["early"].map({True: "early", False: "game-day"})
+    board["is_pick"] = (board["clean"] & (board["early"] | game_day) & board["p_market"].notna()
+                        & (board["edge"] >= min_edge))
     picks = board[board["is_pick"]].copy()
     picks["logged_at"] = snap["path"].rsplit("/", 1)[-1].removesuffix(".json")
     log_dir = DATA_DIR / "picks"
     log_dir.mkdir(parents=True, exist_ok=True)
-    picks["line_type"] = "early"
     cols = ["logged_at", "line_type", "game_id", "start_utc", "home", "away", "side", "pick_team", "p_model", "p_market",
             "edge", "best_price", "best_book", "med_price", "books"]
     if not picks.empty:

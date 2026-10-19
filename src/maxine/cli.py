@@ -91,7 +91,7 @@ def cmd_clv(_args):
 
 def cmd_picks(args):
     con = connect()
-    picks.print_report(picks.run(con, hours=args.hours, min_edge=args.min_edge))
+    picks.print_report(picks.run(con, hours=args.hours, min_edge=args.min_edge, game_day=args.game_day))
 
 
 def cmd_scorecard(_args):
@@ -174,6 +174,7 @@ def main():
     s = sub.add_parser("picks", help="evening job: price upcoming games vs current odds, log early-line picks")
     s.add_argument("--hours", type=int, default=36, help="price games starting within this many hours")
     s.add_argument("--min-edge", type=float, default=0.05, help="minimum edge for a pick")
+    s.add_argument("--game-day", action="store_true", help="also pick today's games (no backtested edge)")
     s.set_defaults(func=cmd_picks)
 
     s = sub.add_parser("scorecard", help="write reports/scorecard.json (backtest + CLV) for the web Model tab")

@@ -173,6 +173,10 @@ MIGRATIONS: list[tuple[int, str]] = [
         result       TEXT, profit REAL, graded_at TEXT
     );
     """),
+    (2, """
+    -- early (day-before line, backtested edge) vs game-day (no backtested edge): separate records
+    ALTER TABLE paper_picks ADD COLUMN line_type TEXT DEFAULT 'early';
+    """),
 ]
 
 

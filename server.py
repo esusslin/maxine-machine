@@ -39,7 +39,7 @@ SCORECARD = ROOT / "reports" / "scorecard.json"
 EXPECTED_FRESHNESS = {
     "heartbeat": timedelta(hours=2),
     "results_and_grade": timedelta(hours=30),
-    "early_line_picks": timedelta(hours=30),
+    "picks": timedelta(hours=14),
     "betnhl_snapshot": timedelta(hours=30),
     "capture_closes": timedelta(hours=14),
 }

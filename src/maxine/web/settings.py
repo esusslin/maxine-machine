@@ -63,6 +63,7 @@ class Settings:
 
     ODDS_API_KEY: str = os.getenv("ODDS_API_KEY", "")
     MIN_EDGE: float = _float("MIN_EDGE", 0.05)
+    GAME_DAY_PICKS: bool = _bool("GAME_DAY_PICKS", True)
     ENABLE_JOBS: bool = _bool("ENABLE_JOBS", True)
     BOOTSTRAP_ON_EMPTY: bool = _bool("BOOTSTRAP_ON_EMPTY", True)
 

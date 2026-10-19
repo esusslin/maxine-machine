@@ -167,7 +167,7 @@
   <!-- ============ board ============ -->
   <div x-show="tab==='board'" class="px-4 space-y-2">
     <p class="text-[11px] text-slate-500" x-show="board.updated_at"
-       x-text="'Priced '+ago(board.updated_at)+' · picks need a clean early line and edge ≥ '+pct(board.min_edge,0)"></p>
+       x-text="'Priced '+ago(board.updated_at)+' · picks need edge ≥ '+pct(board.min_edge,0)+(board.game_day_picks?' · early and game-day lines':' · early line only')"></p>
     <p class="text-sm text-slate-500 card p-4" x-show="!(board.records||[]).length">
       No board yet. It is built every evening at 6:30 PT, or from Admin → Run picks.
     </p>
@@ -178,7 +178,9 @@
             <p class="text-sm"><span x-text="g.away"></span> @ <span x-text="g.home"></span></p>
             <p class="text-[11px] text-slate-500" x-text="when(g.start_utc)+' · '+(g.early?'early line':'game-day line')+(g.clean?'':' · plays before this')"></p>
           </div>
-          <span x-show="g.is_pick" class="text-[11px] px-2 py-0.5 rounded bg-emerald-900 text-emerald-300">PICK</span>
+          <span x-show="g.is_pick" class="text-[11px] px-2 py-0.5 rounded"
+                :class="g.early ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900/60 text-amber-300'"
+                x-text="'PICK · '+(g.early ? 'early' : 'game-day')"></span>
         </div>
         <template x-if="g.p_market!==null">
           <div class="mt-2 grid grid-cols-4 gap-2 text-center">
@@ -205,6 +207,14 @@
       <div><p class="text-[10px] text-slate-500">beat close</p><p class="text-sm" x-text="paperRec.beat_close_pct==null?'—':pct(paperRec.beat_close_pct,0)"></p></div>
       <div><p class="text-[10px] text-slate-500">open</p><p class="text-sm" x-text="paperRec.open??0"></p></div>
     </div>
+    <div class="card p-3 mb-3 text-[12px] space-y-1">
+      <template x-for="lt in ['early','game-day']" :key="lt">
+        <p :class="lt==='early'?'text-emerald-300':'text-amber-300'"
+           x-text="lt+': '+((paperByLine[lt]||{}).wins??0)+'-'+(((paperByLine[lt]||{}).bets??0)-((paperByLine[lt]||{}).wins??0))
+             +' · '+((paperByLine[lt]||{}).units??0)+'u · beat close '+((paperByLine[lt]||{}).beat_close_pct==null?'—':pct(paperByLine[lt].beat_close_pct,0))"></p>
+      </template>
+      <p class="text-slate-500">Game-day picks had no edge in the backtest; this record shows whether that holds live.</p>
+    </div>
     <p class="text-sm text-slate-500 card p-4" x-show="!paper.length">No paper picks yet.</p>
     <div class="space-y-2">
       <template x-for="p in paper" :key="p.id">
@@ -215,7 +225,7 @@
                   x-text="p.result ? (p.result+' '+(p.profit>0?'+':'')+p.profit.toFixed(2)+'u') : 'open'"></span>
           </div>
           <p class="text-[11px] text-slate-500 mt-1"
-             x-text="when(p.start_utc)+' · bet '+dec(p.best_price)+' at '+bookName(p.best_book)+' · edge +'+pct(p.edge)"></p>
+             x-text="(p.line_type||'early')+' · '+when(p.start_utc)+' · bet '+dec(p.best_price)+' at '+bookName(p.best_book)+' · edge +'+pct(p.edge)"></p>
           <p class="text-[11px] mt-1" :class="p.clv>0?'text-emerald-400':'text-slate-400'"
              x-text="p.clv==null ? 'close not captured yet' : ('close '+dec(p.close_price)+' · CLV '+(p.clv>0?'+':'')+pct(p.clv))"></p>
         </div>
@@ -272,7 +282,7 @@
       <p class="text-sm mb-1">Jobs</p>
       <p class="text-xs text-slate-500 mb-3">Queued in the background; one runs at a time.</p>
       <div class="grid grid-cols-2 gap-2">
-        <button @click="runJob('picks')" class="py-2 rounded bg-emerald-600 text-white text-xs">Run picks</button>
+        <button @click="runJob('picks')" class="py-2 rounded bg-emerald-600 text-white text-xs">Run picks (today + tomorrow)</button>
         <button @click="runJob('closes')" class="py-2 rounded border border-slate-600 text-xs">Capture closes (3 credits)</button>
         <button @click="runJob('results')" class="py-2 rounded border border-slate-600 text-xs">Results + grade</button>
         <button @click="runJob('betnhl')" class="py-2 rounded border border-slate-600 text-xs">BetNHL snapshot</button>
@@ -288,7 +298,7 @@
       <div class="mt-2 space-y-1">
         <template x-for="r in (status.runs||[])" :key="r.job_name+r.started_at">
           <p :class="r.status==='success'?'text-slate-500':'text-red-400'"
-             x-text="r.started_at.slice(5,16).replace('T',' ')+' '+r.job_name+' '+r.status+(r.error?(': '+r.error):'')"></p>
+             x-text="when(r.started_at)+' '+r.job_name+' '+r.status+(r.note?(' '+r.note):'')+(r.error?(': '+r.error):'')"></p>
         </template>
       </div>
     </div>
@@ -325,7 +335,7 @@ function algo(){return{
   inviteCode:'', inviteValid:false, inviteReason:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
-  board:{records:[]}, paper:[], paperRec:{}, betnhl:[], model:{}, status:{}, invites:[], jobMsg:'',
+  board:{records:[]}, paper:[], paperRec:{}, paperByLine:{}, betnhl:[], model:{}, status:{}, invites:[], jobMsg:'',
 
   tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'betnhl',label:'BetNHL'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
@@ -404,7 +414,7 @@ function algo(){return{
     this.user=await me.json();
     if(!this.profilePhone) this.profilePhone=this.user.phone||'';
     if(this.tab==='board') this.board=await this.get('/api/board');
-    if(this.tab==='picks'){ const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{} }
+    if(this.tab==='picks'){ const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{} }
     if(this.tab==='betnhl') this.betnhl=(await this.get('/api/betnhl')).picks||[];
     if(this.tab==='model') this.model=await this.get('/api/model');
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }
