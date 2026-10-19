@@ -205,11 +205,11 @@
     <div class="card p-3 mb-3 text-[12px] space-y-1">
       <p class="text-slate-300 mb-1">By market</p>
       <template x-for="(r,key) in paperByMarket" :key="key">
-        <p :class="(key==='h2h|early'||key==='totals|early')?'text-emerald-300':'text-amber-300'"
+        <p :class="(key==='h2h|early'||key==='totals|early'||key==='reg3|early')?'text-emerald-300':'text-amber-300'"
            x-text="marketLabel(key.split('|')[0])+' · '+key.split('|')[1]+': '+r.wins+'-'+r.losses+(r.pushes?('-'+r.pushes):'')+' · '+r.units+'u · beat close '+(r.beat_close_pct==null?'—':pct(r.beat_close_pct,0))+' · open '+r.open"></p>
       </template>
       <p class="text-slate-500" x-show="!Object.keys(paperByMarket).length">No bets yet.</p>
-      <p class="text-slate-500">Green = backtested edge (moneyline and totals, early line). Amber = unproven; this record decides.</p>
+      <p class="text-slate-500">Green = backtested edge (moneyline, totals and regulation, early line). Amber = unproven; this record decides.</p>
     </div>
     <div class="space-y-2">
       <template x-for="p in paper" :key="p.id">
@@ -350,7 +350,7 @@ function algo(){return{
       {term:'Total',def:'Final goals, over or under the line. The overtime or shootout winner is credited one goal.'},
       {term:'Puck line',def:'Final margin with a 1.5-goal handicap (+1.5 / -1.5). An overtime or shootout result is a one-goal margin.'},
       {term:'Regulation',def:'Result after 60 minutes only: home, away or tie. Overtime does not count.'},
-      {term:'unproven',def:'Puck line, regulation and game-day picks had no demonstrated edge in the backtest. They are tracked separately so the live record can show whether they work.'},
+      {term:'unproven',def:'Puck line and game-day picks had no demonstrated edge in the backtest. They are tracked separately so the live record can show whether they work.'},
       {term:'edge',def:'How much more likely our side is to win than the market says, in percentage points.'},
       {term:'early line',def:'A game on a later date than today. The backtest found an edge only here; by game day the market has caught up.'},
       {term:'plays before this',def:'One of the teams has another game first, so the model would be missing a result the bet depends on. Never a pick.'},

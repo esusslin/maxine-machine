@@ -9,8 +9,9 @@ Two kinds of pick, tracked separately:
   game-day  clean games today, when game_day=True. The backtest found NO edge here (2023-26, edge >= 5%:
             1,081 bets, line moved our way 51%, ROI -0.8%); they are logged so the live record can say
             whether that holds.
-Validated (backtest, early line, 2023-26): moneyline (edge >= 5%: line moved our way 74%) and totals
-(edge >= 3%: 70%). Puck line and regulation 3-way are unproven and tracked separately, like game-day.
+Validated (backtest, early line, 2023-26): moneyline (edge >= 5%: line moved our way 74%), totals
+(edge >= 3%: 67%) and regulation 3-way (edge >= 5%: 535 bets, 78%; prices from EU books). Puck line is
+unproven and tracked separately, like game-day picks.
 The starting goalie is not used (usually unknown this early). Picks are logged for paper trading.
 """
 import json
@@ -31,7 +32,7 @@ CURRENT_SEASON = 20262027
 PACIFIC = ZoneInfo("America/Los_Angeles")
 MARKETS = ("h2h", "totals", "spreads", "reg3")
 DEFAULT_MIN_EDGE = {"h2h": 0.05, "totals": 0.03, "spreads": 0.05, "reg3": 0.05}
-VALIDATED = {("h2h", "early"), ("totals", "early")}
+VALIDATED = {("h2h", "early"), ("totals", "early"), ("reg3", "early")}
 MARKET_LABEL = {"h2h": "Moneyline", "totals": "Total", "spreads": "Puck line", "reg3": "Regulation 3-way"}
 
 
