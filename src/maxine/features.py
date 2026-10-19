@@ -116,3 +116,45 @@ def game_features(con) -> pd.DataFrame:
     df["home_b2b"], df["away_b2b"] = df["h_b2b"], df["a_b2b"]
     df["rest_diff"] = df["h_rest_days"] - df["a_rest_days"]
     return df.sort_values("start_utc").reset_index(drop=True)
+
+
+def latest_form(con) -> dict[str, dict]:
+    """Each team's form after its most recent completed game (for pricing upcoming games)."""
+    tg = _team_games(con).sort_values("start_utc")
+    franchise = tg["team"].map(lambda t: {v: k for k, v in FRANCHISE_PREDECESSOR.items()}.get(t, t))
+    tg["franchise"] = franchise
+    out = {}
+    for team, g in tg.groupby("franchise"):
+        ew = {c: g[c].ewm(halflife=HALF_LIFE_GAMES).mean().iloc[-1]
+              for c in ("xgf", "xga", "xgf_5v5", "xga_5v5", "gf", "ga")}
+        out[team] = {
+            "xg_share_5v5": ew["xgf_5v5"] / (ew["xgf_5v5"] + ew["xga_5v5"]),
+            "xg_net": ew["xgf"] - ew["xga"],
+            "goal_net": ew["gf"] - ew["ga"],
+            "last_game_date": pd.to_datetime(g["game_date"].iloc[-1]),
+            "games": len(g),
+        }
+    return out
+
+
+def upcoming_features(con, fixtures: pd.DataFrame) -> pd.DataFrame:
+    """fixtures: game_id, game_date, home, away. Same feature definitions as game_features."""
+    form = latest_form(con)
+    rows = []
+    for f in fixtures.itertuples():
+        h, a = form.get(f.home), form.get(f.away)
+        if h is None or a is None:
+            continue
+        date = pd.to_datetime(f.game_date)
+        rest_h = min(max((date - h["last_game_date"]).days - 1, 0), REST_CAP)
+        rest_a = min(max((date - a["last_game_date"]).days - 1, 0), REST_CAP)
+        rows.append({
+            "game_id": f.game_id,
+            "xg_share_5v5_diff": h["xg_share_5v5"] - a["xg_share_5v5"],
+            "xg_net_diff": h["xg_net"] - a["xg_net"],
+            "goal_net_diff": h["goal_net"] - a["goal_net"],
+            "gsax30_diff": 0.0,
+            "home_b2b": int(rest_h == 0), "away_b2b": int(rest_a == 0),
+            "rest_diff": rest_h - rest_a,
+        })
+    return pd.DataFrame(rows)

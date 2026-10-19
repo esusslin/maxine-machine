@@ -35,7 +35,7 @@ def games_between(start: date, end: date, refresh: bool = False) -> list[dict]:
         for gd in week.get("gameWeek", []):
             for g in gd.get("games", []):
                 if start.isoformat() <= gd["date"] <= end.isoformat():
-                    games.append(g)
+                    games.append({**g, "_local_date": gd["date"]})
         day += timedelta(days=7)
     return games
 

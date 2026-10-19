@@ -47,3 +47,22 @@ def walk_forward(df: pd.DataFrame, first_test_season: int, features: list[str] =
                               **({"calib_slope": round(float(cal.coef_[0][0]), 3),
                                   "calib_intercept": round(float(cal.intercept_[0]), 3)} if cal else {})}
     return preds, coefs
+
+
+def fit_final(df: pd.DataFrame, features: list[str], first_oos_season: int = 20222023):
+    """Fit on every usable game; calibrate on walk-forward out-of-sample predictions.
+
+    Returns predict(frame) -> calibrated home win probabilities.
+    """
+    raw_oos, _ = walk_forward(df, first_oos_season, features, calibrate=False)
+    usable = df.dropna(subset=features)
+    oos = usable[usable["game_id"].isin(raw_oos)]
+    cal = LogisticRegression(C=1e6).fit(_logit(oos["game_id"].map(raw_oos)).reshape(-1, 1), oos["home_win"])
+    model = make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=1000))
+    model.fit(usable[features], usable["home_win"])
+
+    def predict(frame: pd.DataFrame) -> np.ndarray:
+        raw = model.predict_proba(frame[features])[:, 1]
+        return cal.predict_proba(_logit(raw).reshape(-1, 1))[:, 1]
+
+    return predict

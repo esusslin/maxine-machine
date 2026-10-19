@@ -3,7 +3,7 @@ import argparse
 from datetime import date, timedelta
 
 from maxine.ingest import betnhl, nhl, odds, odds_backfill
-from maxine import backtest, clv, market
+from maxine import backtest, clv, market, picks
 from maxine.models import xg
 from maxine.validate import validate_season
 from maxine.warehouse import load
@@ -85,6 +85,11 @@ def cmd_clv(_args):
     clv.print_report(clv.run(con))
 
 
+def cmd_picks(args):
+    con = connect()
+    picks.print_report(picks.run(con, hours=args.hours, min_edge=args.min_edge))
+
+
 def cmd_daily(_args):
     """Yesterday's results + today's odds and BetNHL picks, then load. Run once each morning."""
     today = date.today()
@@ -151,6 +156,11 @@ def main():
 
     s = sub.add_parser("clv", help="edge test: line movement toward the model and ROI at the morning line")
     s.set_defaults(func=cmd_clv)
+
+    s = sub.add_parser("picks", help="evening job: price upcoming games vs current odds, log early-line picks")
+    s.add_argument("--hours", type=int, default=36, help="price games starting within this many hours")
+    s.add_argument("--min-edge", type=float, default=0.05, help="minimum edge for a pick")
+    s.set_defaults(func=cmd_picks)
 
     s = sub.add_parser("daily", help="morning job: results, odds, BetNHL picks, load")
     s.set_defaults(func=cmd_daily)
