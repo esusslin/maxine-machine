@@ -3,7 +3,7 @@ import argparse
 from datetime import date, timedelta
 
 from maxine.ingest import betnhl, nhl, odds, odds_backfill
-from maxine import backtest, clv, market, picks, scorecard
+from maxine import backtest, clv, market, markets_bt, picks, scorecard
 from maxine.models import xg
 from maxine.validate import validate_season
 from maxine.warehouse import load
@@ -25,14 +25,14 @@ def cmd_nhl_range(args):
 
 
 def cmd_odds(args):
-    leagues = list(odds.SPORTS) if args.league == "all" else [args.league]
+    leagues = list(odds.LIVE_FEEDS) if args.league == "all" else [args.league]
     for lg in leagues:
         print(lg, odds.snapshot(lg))
 
 
 def cmd_odds_backfill(args):
     con = connect()
-    print(odds_backfill.run(con, args.seasons, dry_run=args.dry_run, reserve=args.reserve))
+    print(odds_backfill.run(con, args.seasons, dry_run=args.dry_run, reserve=args.reserve, feed=args.feed))
 
 
 def cmd_betnhl(args):
@@ -91,7 +91,13 @@ def cmd_clv(_args):
 
 def cmd_picks(args):
     con = connect()
-    picks.print_report(picks.run(con, hours=args.hours, min_edge=args.min_edge, game_day=args.game_day))
+    picks.print_report(picks.run(con, hours=args.hours, min_edge=args.min_edge, game_day=args.game_day,
+                                 reg3_feed=not args.no_reg3))
+
+
+def cmd_markets(_args):
+    con = connect()
+    markets_bt.print_report(markets_bt.run(con))
 
 
 def cmd_scorecard(_args):
@@ -104,7 +110,7 @@ def cmd_daily(_args):
     today = date.today()
     yesterday = today - timedelta(days=1)
     print("nhl games", nhl.ingest_range(yesterday, yesterday, refresh_schedule=True))
-    for lg in odds.SPORTS:
+    for lg in odds.LIVE_FEEDS:
         try:
             print("odds", lg, odds.snapshot(lg))
         except SystemExit as e:
@@ -133,13 +139,15 @@ def main():
     s.set_defaults(func=cmd_nhl_range)
 
     s = sub.add_parser("odds", help="snapshot current odds (uses API credits)")
-    s.add_argument("--league", choices=["nhl", "ahl", "all"], default="all")
+    s.add_argument("--league", choices=["nhl", "ahl", "nhl_eu", "all"], default="all")
     s.set_defaults(func=cmd_odds)
 
     s = sub.add_parser("odds-backfill", help="historical NHL odds for loaded seasons (paid plan; run `maxine load` first)")
     s.add_argument("seasons", nargs="*", type=int, default=list(reversed(BACKFILL_SEASONS)))
     s.add_argument("--dry-run", action="store_true", help="count snapshots and credits, spend nothing")
     s.add_argument("--reserve", type=int, default=3000, help="stop before credits remaining drop below this")
+    s.add_argument("--feed", choices=["nhl", "nhl_eu"], default="nhl",
+                   help="nhl = US moneyline/spreads/totals; nhl_eu = EU regulation-time moneyline with Draw (3-way)")
     s.set_defaults(func=cmd_odds_backfill)
 
     s = sub.add_parser("betnhl", help="snapshot a BetNHL tips page")
@@ -173,9 +181,14 @@ def main():
 
     s = sub.add_parser("picks", help="evening job: price upcoming games vs current odds, log early-line picks")
     s.add_argument("--hours", type=int, default=36, help="price games starting within this many hours")
-    s.add_argument("--min-edge", type=float, default=0.05, help="minimum edge for a pick")
+    s.add_argument("--min-edge", type=float, default=None,
+                   help="one minimum edge for every market (default per market: ML 5%%, totals 3%%, puck line 5%%, reg 5%%)")
+    s.add_argument("--no-reg3", action="store_true", help="skip the EU regulation 3-way feed (saves 1 credit)")
     s.add_argument("--game-day", action="store_true", help="also pick today's games (no backtested edge)")
     s.set_defaults(func=cmd_picks)
+
+    s = sub.add_parser("markets", help="backtest totals, puck line and regulation 3-way against their own lines")
+    s.set_defaults(func=cmd_markets)
 
     s = sub.add_parser("scorecard", help="write reports/scorecard.json (backtest + CLV) for the web Model tab")
     s.set_defaults(func=cmd_scorecard)

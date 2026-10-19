@@ -1,12 +1,16 @@
-"""Evening picks at the early line.
+"""Picks for every market: moneyline, totals, puck line (spreads), regulation 3-way.
 
 Prices every NHL regular-season game starting in the next `hours` hours, against current odds.
+Moneyline: the shot-based win model (models/winprob). Totals, puck line, regulation 3-way: the goal
+model (models/goals), totals and spreads calibrated per market on out-of-sample results.
 A game is "clean" when neither team plays before it (all model inputs known at bet time).
 Two kinds of pick, tracked separately:
   early     clean games on a later date than today (Pacific). The backtest found an edge here.
   game-day  clean games today, when game_day=True. The backtest found NO edge here (2023-26, edge >= 5%:
             1,081 bets, line moved our way 51%, ROI -0.8%); they are logged so the live record can say
             whether that holds.
+Validated (backtest, early line, 2023-26): moneyline (edge >= 5%: line moved our way 74%) and totals
+(edge >= 3%: 70%). Puck line and regulation 3-way are unproven and tracked separately, like game-day.
 The starting goalie is not used (usually unknown this early). Picks are logged for paper trading.
 """
 import json
@@ -15,16 +19,20 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from maxine import features
+from maxine import features, live_markets
 from maxine.config import DATA_DIR
 from maxine.ingest import nhl, odds
-from maxine.models import winprob, xg
+from maxine.models import goals, winprob, xg
 from maxine.teams import ODDS_NAME_TO_NHL
 from maxine.warehouse import load
 
 PICK_FEATURES = [f for f in features.FEATURES if f != "gsax30_diff"]
 CURRENT_SEASON = 20262027
 PACIFIC = ZoneInfo("America/Los_Angeles")
+MARKETS = ("h2h", "totals", "spreads", "reg3")
+DEFAULT_MIN_EDGE = {"h2h": 0.05, "totals": 0.03, "spreads": 0.05, "reg3": 0.05}
+VALIDATED = {("h2h", "early"), ("totals", "early")}
+MARKET_LABEL = {"h2h": "Moneyline", "totals": "Total", "spreads": "Puck line", "reg3": "Regulation 3-way"}
 
 
 def catch_up(con) -> dict:
@@ -54,81 +62,135 @@ def fixtures(hours: int) -> pd.DataFrame:
     return df.sort_values("start_utc").reset_index(drop=True)
 
 
+
+
 def market_now(snap: dict) -> pd.DataFrame:
-    """Median no-vig home probability, median and best prices per event, from a live snapshot file."""
-    payload = json.loads(open(snap["path"]).read())
-    rows = []
-    for ev in payload["data"]:
-        home, away = ODDS_NAME_TO_NHL.get(ev["home_team"]), ODDS_NAME_TO_NHL.get(ev["away_team"])
-        for b in ev.get("bookmakers", []):
-            for m in b.get("markets", []):
-                if m["key"] != "h2h":
-                    continue
-                prices = {o["name"]: o["price"] for o in m["outcomes"]}
-                hp, ap = prices.get(ev["home_team"]), prices.get(ev["away_team"])
-                if hp and ap and hp > 1 and ap > 1:
-                    rows.append({"home": home, "away": away, "commence": pd.to_datetime(ev["commence_time"]),
-                                 "book": b["key"], "hp": hp, "ap": ap,
-                                 "p_book": (1 / hp) / (1 / hp + 1 / ap)})
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-    agg = df.groupby(["home", "away", "commence"]).agg(
-        p_market=("p_book", "median"), books=("book", "nunique"),
-        med_home_price=("hp", "median"), med_away_price=("ap", "median")).reset_index()
-    best_h = df.loc[df.groupby(["home", "away", "commence"])["hp"].idxmax(), ["home", "away", "commence", "hp", "book"]]
-    best_a = df.loc[df.groupby(["home", "away", "commence"])["ap"].idxmax(), ["home", "away", "commence", "ap", "book"]]
-    agg = agg.merge(best_h.rename(columns={"hp": "best_home_price", "book": "best_home_book"}), on=["home", "away", "commence"])
-    return agg.merge(best_a.rename(columns={"ap": "best_away_price", "book": "best_away_book"}), on=["home", "away", "commence"])
+    """Moneyline table with the original column names (used by paper.capture_closes for h2h)."""
+    tw = live_markets.two_way(snap["path"])
+    if tw.empty:
+        return tw
+    h = tw[tw["market"] == "h2h"].rename(columns={
+        "p_a": "p_market", "med_a": "med_home_price", "med_b": "med_away_price",
+        "best_a": "best_home_price", "best_a_book": "best_home_book",
+        "best_b": "best_away_price", "best_b_book": "best_away_book"})
+    return h.reset_index(drop=True)
 
 
-def run(con, hours: int = 36, min_edge: float = 0.05, game_day: bool = False) -> dict:
+def _match(df: pd.DataFrame, f) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+    m = df[(df["home"] == f.home) & (df["away"] == f.away)]
+    return m[(m["commence"] - f.start_utc).abs() < pd.Timedelta(hours=12)]
+
+
+def _two_way_row(base: dict, market: str, mk, p_model_a: float) -> dict:
+    a = p_model_a >= mk.p_a
+    line = float(mk.line)
+    if market == "h2h":
+        sel = base["home"] if a else base["away"]
+    elif market == "spreads":
+        team, tl = (base["home"], line) if a else (base["away"], -line)
+        sel = f"{team} {tl:+.1f}"
+    else:
+        sel = f"{'Over' if a else 'Under'} {line:g}"
+    return {**base, "market": market, "line": line, "side": "a" if a else "b", "selection": sel,
+            "p_model": p_model_a if a else 1 - p_model_a, "p_market": mk.p_a if a else 1 - mk.p_a,
+            "edge": abs(p_model_a - mk.p_a), "best_price": mk.best_a if a else mk.best_b,
+            "best_book": mk.best_a_book if a else mk.best_b_book, "med_price": mk.med_a if a else mk.med_b,
+            "books": int(mk.books)}
+
+
+def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bool = False,
+        reg3_feed: bool = True) -> dict:
+    thresholds = dict(DEFAULT_MIN_EDGE)
+    if isinstance(min_edge, (int, float)):
+        thresholds = {k: float(min_edge) for k in thresholds}
+    elif isinstance(min_edge, dict):
+        thresholds.update(min_edge)
+
     status = catch_up(con)
     fx = fixtures(hours)
+    empty = {"status": status, "board": pd.DataFrame(), "picks": pd.DataFrame(), "credits_remaining": None}
     if fx.empty:
-        return {"status": status, "board": pd.DataFrame(), "picks": pd.DataFrame()}
-    predict = winprob.fit_final(features.game_features(con), PICK_FEATURES)
-    feats = features.upcoming_features(con, fx)
-    fx = fx.merge(feats, on="game_id", how="inner")
-    fx["p_model"] = predict(fx)
-
-    snap = odds.snapshot("nhl")
-    mk = market_now(snap)
-    if mk.empty:
-        mk = pd.DataFrame(columns=["home", "away", "commence", "p_market", "books", "med_home_price",
-                                   "med_away_price", "best_home_price", "best_home_book",
-                                   "best_away_price", "best_away_book"])
+        return empty
     fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
-    mk["commence"] = pd.to_datetime(mk["commence"], utc=True)
-    board = fx.merge(mk, on=["home", "away"], how="left")
-    board = board[(board["commence"].isna()) |
-                  ((board["commence"] - board["start_utc"]).abs() < pd.Timedelta(hours=12))]
-    home = board["p_model"] >= board["p_market"]
-    board["side"] = home.map({True: "home", False: "away"})
-    board["pick_team"] = board["home"].where(home, board["away"])
-    board["edge"] = (board["p_model"] - board["p_market"]).where(home, board["p_market"] - board["p_model"])
-    board["best_price"] = board["best_home_price"].where(home, board["best_away_price"])
-    board["best_book"] = board["best_home_book"].where(home, board["best_away_book"])
-    board["med_price"] = board["med_home_price"].where(home, board["med_away_price"])
+
+    # models
+    ml_predict = winprob.fit_final(features.game_features(con), PICK_FEATURES)
+    ml_feats = features.upcoming_features(con, fx)
+    p_ml = dict(zip(ml_feats["game_id"], ml_predict(ml_feats))) if not ml_feats.empty else {}
+    gm = goals.fit_final(con)
+    cal = goals.calibrators(con)
+    lam = goals.game_lambdas(gm, goals.fixture_sides(features.latest_form(con), fx))
+    prices = {r.game_id: goals.price(gm, r.lam_h, r.lam_a) for r in lam.itertuples()}
+
+    # odds
+    snap = odds.snapshot("nhl")
+    tw = live_markets.main_lines(live_markets.two_way(snap["path"]))
+    credits = snap["credits_remaining"]
+    r3 = pd.DataFrame()
+    if reg3_feed:
+        try:
+            snap_eu = odds.snapshot("nhl_eu")
+            r3 = live_markets.reg3(snap_eu["path"])
+            credits = snap_eu["credits_remaining"]
+        except Exception:  # noqa: BLE001 — regulation market is optional
+            r3 = pd.DataFrame()
+
     today_pt = datetime.now(PACIFIC).date()
-    board["early"] = pd.to_datetime(board["game_date"]).dt.date > today_pt
-    board["line_type"] = board["early"].map({True: "early", False: "game-day"})
+    rows = []
+    for f in fx.itertuples():
+        early = pd.to_datetime(f.game_date).date() > today_pt
+        base = {"game_id": f.game_id, "game_date": f.game_date, "start_utc": f.start_utc, "home": f.home,
+                "away": f.away, "clean": bool(f.clean), "early": early,
+                "line_type": "early" if early else "game-day"}
+        mk_all = _match(tw, f)
+        pr = prices.get(f.game_id)
+        # moneyline
+        mk = mk_all[mk_all["market"] == "h2h"] if not mk_all.empty else mk_all
+        if f.game_id in p_ml and len(mk):
+            rows.append(_two_way_row(base, "h2h", mk.iloc[0], float(p_ml[f.game_id])))
+        elif f.game_id in p_ml:
+            rows.append({**base, "market": "h2h", "selection": None, "p_model": float(p_ml[f.game_id]),
+                         "p_market": None, "edge": None})
+        if pr is None or mk_all.empty:
+            continue
+        for market in ("totals", "spreads"):
+            mk = mk_all[mk_all["market"] == market]
+            if not len(mk):
+                continue
+            m0 = mk.iloc[0]
+            a, b, _ = (goals.prob_total(pr, m0.line) if market == "totals" else goals.prob_spread(pr, m0.line))
+            p_a = goals.apply_cal(a / (a + b), cal.get(market)) if (a + b) > 0 else None
+            if p_a is not None:
+                rows.append(_two_way_row(base, market, m0, p_a))
+        r = _match(r3, f)
+        if len(r):
+            r = r.iloc[0]
+            model = {"home": pr["reg_home"], "draw": pr["reg_tie"], "away": pr["reg_away"]}
+            o = max(model, key=lambda k: model[k] - r[f"p_{k}"])
+            label = {"home": f"{f.home} in regulation", "draw": "Tie after regulation", "away": f"{f.away} in regulation"}[o]
+            rows.append({**base, "market": "reg3", "line": 0.0, "side": o, "selection": label,
+                         "p_model": model[o], "p_market": float(r[f"p_{o}"]), "edge": model[o] - float(r[f"p_{o}"]),
+                         "best_price": float(r[f"best_{o}"]), "best_book": r[f"best_{o}_book"],
+                         "med_price": float(r[f"med_{o}"]), "books": int(r["books"])})
+
+    board = pd.DataFrame(rows)
+    board["min_edge"] = board["market"].map(thresholds)
+    board["validated"] = [(m, lt) in VALIDATED for m, lt in zip(board["market"], board["line_type"])]
     board["is_pick"] = (board["clean"] & (board["early"] | game_day) & board["p_market"].notna()
-                        & (board["edge"] >= min_edge))
+                        & (board["edge"].fillna(-1) >= board["min_edge"]))
     picks = board[board["is_pick"]].copy()
     picks["logged_at"] = snap["path"].rsplit("/", 1)[-1].removesuffix(".json")
-    log_dir = DATA_DIR / "picks"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    cols = ["logged_at", "line_type", "game_id", "start_utc", "home", "away", "side", "pick_team", "p_model", "p_market",
-            "edge", "best_price", "best_book", "med_price", "books"]
     if not picks.empty:
-        out = picks[cols].copy()
+        log_dir = DATA_DIR / "picks"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        out = picks.copy()
         out["start_utc"] = out["start_utc"].astype(str)
-        path = log_dir / f"{date.today().isoformat()}.jsonl"
-        with open(path, "a") as fh:
+        with open(log_dir / f"{date.today().isoformat()}.jsonl", "a") as fh:
             for rec in out.to_dict("records"):
-                fh.write(json.dumps(rec) + "\n")
-    return {"status": status, "credits_remaining": snap["credits_remaining"], "board": board, "picks": picks}
+                fh.write(json.dumps(rec, default=str) + "\n")
+    return {"status": status, "credits_remaining": credits, "board": board, "picks": picks}
 
 
 def print_report(r: dict) -> None:
@@ -137,18 +199,17 @@ def print_report(r: dict) -> None:
     if board.empty:
         print("No upcoming regular-season games in the window.")
         return
-    print(f"odds credits remaining: {r.get('credits_remaining')}\n")
-    print(f"{'start (PT)':<17}{'game':<12}{'model':>7}{'market':>8}{'edge':>7}  {'lean':<5}{'best price':>11}  {'book':<14}{'clean':<6}{'line':<9}{'PICK'}")
-    for b in board.sort_values("start_utc").itertuples():
-        start = b.start_utc.tz_convert("America/Los_Angeles").strftime("%a %m-%d %H:%M")
-        game = f"{b.away}@{b.home}"
-        if pd.isna(b.p_market):
-            print(f"{start:<17}{game:<12}{b.p_model:>7.3f}{'no line':>8}")
-            continue
-        print(f"{start:<17}{game:<12}{b.p_model:>7.3f}{b.p_market:>8.3f}{b.edge:>+7.3f}  {b.pick_team:<5}"
-              f"{b.best_price:>11.2f}  {b.best_book:<14}{'yes' if b.clean else 'no':<6}"
-              f"{'early' if b.early else 'game-day':<9}{'<== PICK' if b.is_pick else ''}")
+    print(f"odds credits remaining: {r.get('credits_remaining')}")
+    for gid, g in board.groupby("game_id", sort=False):
+        f = g.iloc[0]
+        start = f.start_utc.tz_convert("America/Los_Angeles").strftime("%a %m-%d %H:%M")
+        print(f"\n{start}  {f.away}@{f.home}  [{f.line_type}{'' if f.clean else ', plays before this'}]")
+        for b in g.itertuples():
+            if pd.isna(b.p_market):
+                print(f"   {MARKET_LABEL[b.market]:<17} model {b.p_model:.3f} (home)  no line")
+                continue
+            tag = ("PICK" if b.validated else "pick (unproven)") if b.is_pick else ""
+            print(f"   {MARKET_LABEL[b.market]:<17} {b.selection:<24} model {b.p_model:.3f} mkt {b.p_market:.3f} "
+                  f"edge {b.edge:+.3f}  {b.best_price:.2f} {b.best_book:<12} {tag}")
     n = len(r["picks"])
-    print(f"\n{n} pick(s) logged to data/picks/" if n else
-          "\nNo picks (needs a clean game on a later date with a posted line and edge >= threshold).")
-    print("Game-day lines are shown for reference only: the backtest found no edge on them.")
+    print(f"\n{n} pick(s) logged." if n else "\nNo picks.")

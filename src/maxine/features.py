@@ -131,6 +131,7 @@ def latest_form(con) -> dict[str, dict]:
             "xg_share_5v5": ew["xgf_5v5"] / (ew["xgf_5v5"] + ew["xga_5v5"]),
             "xg_net": ew["xgf"] - ew["xga"],
             "goal_net": ew["gf"] - ew["ga"],
+            "xgf": ew["xgf"], "xga": ew["xga"], "gf": ew["gf"], "ga": ew["ga"],
             "last_game_date": pd.to_datetime(g["game_date"].iloc[-1]),
             "games": len(g),
         }

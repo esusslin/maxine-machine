@@ -81,15 +81,17 @@ def run_picks() -> dict:
     with job_run("picks") as ctx:
         con = connect()
         try:
-            r = picks.run(con, hours=36, min_edge=settings.MIN_EDGE, game_day=settings.GAME_DAY_PICKS)
+            r = picks.run(con, hours=36, min_edge=settings.MIN_EDGES, game_day=settings.GAME_DAY_PICKS,
+                          reg3_feed=settings.REG3_FEED)
         finally:
             con.close()
         board = r["board"]
-        cols = ["game_id", "game_date", "start_utc", "home", "away", "p_model", "p_market", "edge", "side",
-                "pick_team", "best_price", "best_book", "med_price", "books", "clean", "early", "line_type", "is_pick"]
+        cols = ["game_id", "game_date", "start_utc", "home", "away", "market", "selection", "line", "side",
+                "p_model", "p_market", "edge", "min_edge", "best_price", "best_book", "med_price", "books",
+                "clean", "early", "line_type", "validated", "is_pick"]
         records = [] if board.empty else [{c: _clean(row.get(c)) for c in cols}
                                           for row in board.to_dict("records")]
-        set_kv("board", json.dumps({"records": records, "min_edge": settings.MIN_EDGE,
+        set_kv("board", json.dumps({"records": records, "min_edges": settings.MIN_EDGES,
                                     "game_day_picks": settings.GAME_DAY_PICKS}))
         if r.get("credits_remaining") is not None:
             set_kv("odds_credits_remaining", str(r["credits_remaining"]))

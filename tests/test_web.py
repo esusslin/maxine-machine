@@ -31,17 +31,36 @@ def test_login_invite_and_admin_guard():
         assert again.status_code == 400
 
 
-def test_paper_store_dedupe_and_grade():
+def _bet(game_id, market, side, selection, line, price=2.0, line_type="early"):
+    return {"game_id": game_id, "game_date": "2026-10-20", "start_utc": pd.Timestamp("2026-10-21T00:00Z"),
+            "home": "NYR", "away": "ANA", "market": market, "side": side, "selection": selection, "line": line,
+            "line_type": line_type, "validated": market in ("h2h", "totals"), "p_model": 0.55, "p_market": 0.5,
+            "edge": 0.05, "best_price": price, "best_book": "fanduel", "med_price": price - 0.05, "books": 10}
+
+
+def test_paper_store_dedupe_and_grade_all_markets():
     server.run_migrations()
-    pick = pd.DataFrame([{"game_id": 99, "game_date": "2026-10-20", "start_utc": pd.Timestamp("2026-10-21T00:00Z"),
-                          "home": "NYR", "away": "ANA", "side": "away", "pick_team": "ANA", "p_model": 0.50,
-                          "p_market": 0.56, "edge": 0.06, "best_price": 2.25, "best_book": "fanduel",
-                          "med_price": 2.15, "books": 10}])
-    assert paper.store_picks(pick) == 1
-    assert paper.store_picks(pick) == 0          # first price seen is the bet; never overwritten
+    bets = pd.DataFrame([
+        _bet(99, "h2h", "b", "ANA", 0.0, 2.25),            # away wins -> W
+        _bet(99, "totals", "a", "Over 5.5", 5.5),          # 3+2 = 5 -> L
+        _bet(99, "spreads", "b", "ANA +1.5", -1.5),        # home line -1.5, away covers -> W
+        _bet(99, "reg3", "draw", "Tie after regulation", 0.0, 4.2),   # reg 2-2 -> W
+        _bet(98, "totals", "b", "Under 6", 6.0),           # 4+2 = 6 -> push
+    ])
+    assert paper.store_picks(bets) == 5
+    assert paper.store_picks(bets) == 0              # first price seen is the bet; never overwritten
     con = duckdb.connect()
-    con.execute("CREATE TABLE games (game_id BIGINT, home_score INT, away_score INT)")
-    con.execute("INSERT INTO games VALUES (99, 2, 3)")   # away team won
-    assert paper.grade(con) == 1
-    rec = paper.summary()["record"]
-    assert rec["bets"] == 1 and rec["wins"] == 1 and rec["units"] == 1.25
+    con.execute("CREATE TABLE games (game_id BIGINT, home_score INT, away_score INT, home_team_id INT, away_team_id INT)")
+    con.execute("CREATE TABLE shots (game_id BIGINT, event_type VARCHAR, period INT, owner_team_id INT)")
+    con.execute("INSERT INTO games VALUES (99, 2, 3, 1, 2), (98, 4, 2, 1, 2)")
+    con.executemany("INSERT INTO shots VALUES (?,?,?,?)", [(99, "goal", 1, 1), (99, "goal", 2, 1), (99, "goal", 2, 2),
+                                                          (99, "goal", 3, 2), (99, "goal", 4, 2)])
+    assert paper.grade(con) == 5
+    res = {(r["game_id"], r["market"]): (r["result"], r["profit"]) for r in paper.summary()["picks"]}
+    assert res[(99, "h2h")] == ("W", 1.25)
+    assert res[(99, "totals")] == ("L", -1.0)
+    assert res[(99, "spreads")][0] == "W"
+    assert res[(99, "reg3")] == ("W", 3.2)
+    assert res[(98, "totals")] == ("P", 0.0)
+    by = paper.summary()["by_market"]
+    assert by["totals|early"]["pushes"] == 1

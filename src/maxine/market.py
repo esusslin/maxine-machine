@@ -77,3 +77,83 @@ def build_closing_lines(con) -> dict:
     return {"games": total, "with_closing_line": matched,
             "median_minutes_before_puck": round(mins or 0, 1),
             "with_morning_line": morning, "morning_median_hours_before_puck": round(hrs or 0, 1)}
+
+
+def build_line_markets(con) -> dict:
+    """Spreads and totals per game and snapshot, by line: median no-vig probability of side A
+    (A = home covers for spreads, keyed by the HOME line; A = over for totals), book count, prices.
+    Table: market_points(game_id, ts, market, line, p_a, n_books, med_a, med_b, best_a, best_b)."""
+    names = list(ODDS_NAME_TO_NHL)
+    con.register("_team_map", pa.table({"name": names, "abbrev": [ODDS_NAME_TO_NHL[n] for n in names]}))
+    con.execute(f"""
+        CREATE OR REPLACE TABLE market_points AS
+        WITH o AS (
+            SELECT {TS} AS ts, s.commence_time, hm.abbrev AS home, aw.abbrev AS away, s.home AS home_name,
+                   s.away AS away_name, s.book, s.market, s.outcome, s.price, s.point
+            FROM odds_snapshots s
+            JOIN _team_map hm ON hm.name = s.home JOIN _team_map aw ON aw.name = s.away
+            WHERE s.league = 'nhl' AND s.market IN ('spreads', 'totals') AND s.price > 1 AND s.point IS NOT NULL
+        ),
+        g AS (SELECT game_id, start_utc, home, away FROM games WHERE league = 'NHL' AND game_type = 2),
+        j AS (
+            SELECT g.game_id, o.ts, o.book, o.market,
+                   CASE WHEN o.market = 'spreads' THEN max(o.point) FILTER (WHERE o.outcome = o.home_name)
+                        ELSE max(o.point) FILTER (WHERE o.outcome = 'Over') END AS line,
+                   CASE WHEN o.market = 'spreads' THEN max(o.price) FILTER (WHERE o.outcome = o.home_name)
+                        ELSE max(o.price) FILTER (WHERE o.outcome = 'Over') END AS a_price,
+                   CASE WHEN o.market = 'spreads' THEN max(o.price) FILTER (WHERE o.outcome = o.away_name)
+                        ELSE max(o.price) FILTER (WHERE o.outcome = 'Under') END AS b_price
+            FROM g JOIN o ON o.home = g.home AND o.away = g.away
+                 AND abs(epoch(o.commence_time) - epoch(g.start_utc)) < 12 * 3600
+            WHERE o.ts <= g.start_utc
+            GROUP BY g.game_id, o.ts, o.book, o.market
+        )
+        SELECT game_id, ts, market, line,
+               median((1 / a_price) / (1 / a_price + 1 / b_price)) AS p_a, count(*) AS n_books,
+               median(a_price) AS med_a, median(b_price) AS med_b, max(a_price) AS best_a, max(b_price) AS best_b
+        FROM j WHERE line IS NOT NULL AND a_price IS NOT NULL AND b_price IS NOT NULL
+        GROUP BY game_id, ts, market, line
+    """)
+    con.unregister("_team_map")
+    return dict(con.execute("SELECT market, count(*) FROM market_points GROUP BY 1").fetchall())
+
+
+def build_reg3(con) -> int:
+    """Regulation 3-way (home / draw / away after 60 minutes) from the EU feed (nhl_eu): books whose
+    moneyline includes a Draw. Each book de-vigged proportionally across its three prices; median across
+    books. Table: market_reg3(game_id, ts, p_home, p_draw, p_away, n_books, med_home, med_draw, med_away,
+    best_home, best_draw, best_away)."""
+    has = con.execute("SELECT count(*) FROM odds_snapshots WHERE league = 'nhl_eu'").fetchone()[0]
+    if not has:
+        con.execute("CREATE OR REPLACE TABLE market_reg3 (game_id BIGINT, ts TIMESTAMP, p_home DOUBLE, p_draw DOUBLE,"
+                    " p_away DOUBLE, n_books BIGINT, med_home DOUBLE, med_draw DOUBLE, med_away DOUBLE,"
+                    " best_home DOUBLE, best_draw DOUBLE, best_away DOUBLE)")
+        return 0
+    names = list(ODDS_NAME_TO_NHL)
+    con.register("_team_map", pa.table({"name": names, "abbrev": [ODDS_NAME_TO_NHL[n] for n in names]}))
+    con.execute(f"""
+        CREATE OR REPLACE TABLE market_reg3 AS
+        WITH o AS (
+            SELECT {TS} AS ts, s.commence_time, hm.abbrev AS home, aw.abbrev AS away, s.home AS home_name,
+                   s.away AS away_name, s.book, s.outcome, s.price
+            FROM odds_snapshots s JOIN _team_map hm ON hm.name = s.home JOIN _team_map aw ON aw.name = s.away
+            WHERE s.league = 'nhl_eu' AND s.market = 'h2h' AND s.price > 1
+        ),
+        g AS (SELECT game_id, start_utc, home, away FROM games WHERE league = 'NHL' AND game_type = 2),
+        b AS (
+            SELECT g.game_id, o.ts, o.book,
+                   max(o.price) FILTER (WHERE o.outcome = o.home_name) AS hp,
+                   max(o.price) FILTER (WHERE o.outcome = 'Draw') AS dp,
+                   max(o.price) FILTER (WHERE o.outcome = o.away_name) AS ap
+            FROM g JOIN o ON o.home = g.home AND o.away = g.away
+                 AND abs(epoch(o.commence_time) - epoch(g.start_utc)) < 12 * 3600
+            WHERE o.ts <= g.start_utc GROUP BY ALL
+        ),
+        v AS (SELECT *, 1/hp + 1/dp + 1/ap AS tot FROM b WHERE hp IS NOT NULL AND dp IS NOT NULL AND ap IS NOT NULL)
+        SELECT game_id, ts, median((1/hp)/tot) AS p_home, median((1/dp)/tot) AS p_draw, median((1/ap)/tot) AS p_away,
+               count(*) AS n_books, median(hp) AS med_home, median(dp) AS med_draw, median(ap) AS med_away,
+               max(hp) AS best_home, max(dp) AS best_draw, max(ap) AS best_away
+        FROM v GROUP BY game_id, ts
+    """)
+    con.unregister("_team_map")
+    return con.execute("SELECT count(*) FROM market_reg3").fetchone()[0]

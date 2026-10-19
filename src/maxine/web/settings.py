@@ -62,7 +62,17 @@ class Settings:
     ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "")
 
     ODDS_API_KEY: str = os.getenv("ODDS_API_KEY", "")
-    MIN_EDGE: float = _float("MIN_EDGE", 0.05)
+    # minimum edge per market (backtested: moneyline 5%, totals 3%; spreads and reg3 unproven)
+    MIN_EDGE_H2H: float = _float("MIN_EDGE_H2H", _float("MIN_EDGE", 0.05))
+    MIN_EDGE_TOTALS: float = _float("MIN_EDGE_TOTALS", 0.03)
+    MIN_EDGE_SPREADS: float = _float("MIN_EDGE_SPREADS", 0.05)
+    MIN_EDGE_REG3: float = _float("MIN_EDGE_REG3", 0.05)
+    REG3_FEED: bool = _bool("REG3_FEED", True)
+
+    @property
+    def MIN_EDGES(self) -> dict:
+        return {"h2h": self.MIN_EDGE_H2H, "totals": self.MIN_EDGE_TOTALS,
+                "spreads": self.MIN_EDGE_SPREADS, "reg3": self.MIN_EDGE_REG3}
     GAME_DAY_PICKS: bool = _bool("GAME_DAY_PICKS", True)
     ENABLE_JOBS: bool = _bool("ENABLE_JOBS", True)
     BOOTSTRAP_ON_EMPTY: bool = _bool("BOOTSTRAP_ON_EMPTY", True)

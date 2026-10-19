@@ -28,23 +28,24 @@ def planned_snapshots(con, seasons: list[int]) -> list[str]:
     return [s.strftime("%Y-%m-%dT%H:%M:%SZ") for s in sorted(stamps, reverse=True)]
 
 
-def already_saved(at_iso: str, league: str = "nhl") -> bool:
+def already_saved(at_iso: str, league: str = "nhl") -> bool:  # league = feed name
     return raw_path("odds_hist", league, f"{at_iso.replace(':', '-')}.json").exists()
 
 
-def run(con, seasons: list[int], dry_run: bool, reserve: int) -> dict:
+def run(con, seasons: list[int], dry_run: bool, reserve: int, feed: str = "nhl") -> dict:
+    per = odds.credits_per_historical(feed)
     plan = planned_snapshots(con, seasons)
-    todo = [s for s in plan if not already_saved(s)]
-    summary = {"seasons": seasons, "snapshots_planned": len(plan), "already_saved": len(plan) - len(todo),
-               "to_fetch": len(todo), "estimated_credits": len(todo) * CREDITS_PER_SNAPSHOT}
+    todo = [s for s in plan if not already_saved(s, feed)]
+    summary = {"feed": feed, "seasons": seasons, "snapshots_planned": len(plan), "already_saved": len(plan) - len(todo),
+               "to_fetch": len(todo), "credits_per_snapshot": per, "estimated_credits": len(todo) * per}
     if dry_run:
         return summary
     fetched, remaining = 0, None
     for at_iso in todo:
-        if remaining is not None and remaining - CREDITS_PER_SNAPSHOT < reserve:
+        if remaining is not None and remaining - per < reserve:
             summary["stopped"] = f"credits remaining {remaining} would drop below reserve {reserve}"
             break
-        result = odds.historical_snapshot("nhl", at_iso)
+        result = odds.historical_snapshot(feed, at_iso)
         fetched += 1
         remaining = int(result["credits_remaining"]) if result["credits_remaining"] else None
         if fetched == 1 or fetched % 50 == 0:

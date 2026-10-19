@@ -281,7 +281,7 @@ def list_users(admin: dict = Depends(auth.current_admin)) -> dict:
 @app.get("/api/board")
 def board(user: dict = Depends(auth.current_user)) -> dict:
     row = get_kv("board")
-    data = json.loads(row["value"]) if row else {"records": [], "min_edge": settings.MIN_EDGE}
+    data = json.loads(row["value"]) if row else {"records": [], "min_edges": settings.MIN_EDGES}
     data["updated_at"] = row["updated_at"] if row else None
     return data
 
@@ -331,7 +331,7 @@ def admin_status(admin: dict = Depends(auth.current_admin)) -> dict:
                                    "note, error FROM job_runs ORDER BY id DESC LIMIT 25")]
     credits = get_kv("odds_credits_remaining")
     return {"warehouse": counts, "runs": runs, "odds_credits_remaining": credits["value"] if credits else None,
-            "min_edge": settings.MIN_EDGE, "config_problems": settings.validate()}
+            "min_edges": settings.MIN_EDGES, "config_problems": settings.validate()}
 
 
 @app.post("/api/admin/run/{name}")

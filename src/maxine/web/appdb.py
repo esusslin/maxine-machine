@@ -177,6 +177,33 @@ MIGRATIONS: list[tuple[int, str]] = [
     -- early (day-before line, backtested edge) vs game-day (no backtested edge): separate records
     ALTER TABLE paper_picks ADD COLUMN line_type TEXT DEFAULT 'early';
     """),
+    (3, """
+    -- Every market. One bet per game per market; the first price seen is the bet.
+    -- side: a/b for two-way markets (a = home / home covers / over), home/draw/away for reg3.
+    CREATE TABLE IF NOT EXISTS paper_bets (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at   TEXT NOT NULL,
+        game_id      INTEGER NOT NULL,
+        market       TEXT NOT NULL,
+        line_type    TEXT,
+        validated    INTEGER,
+        game_date    TEXT, start_utc TEXT, home TEXT, away TEXT,
+        side         TEXT, selection TEXT, line REAL,
+        p_model      REAL, p_market REAL, edge REAL,
+        best_price   REAL, best_book TEXT, med_price REAL, books INTEGER,
+        close_p_side REAL, close_price REAL, close_at TEXT, clv REAL,
+        result       TEXT, profit REAL, graded_at TEXT,
+        UNIQUE (game_id, market)
+    );
+    INSERT OR IGNORE INTO paper_bets (created_at, game_id, market, line_type, validated, game_date, start_utc, home,
+        away, side, selection, line, p_model, p_market, edge, best_price, best_book, med_price, books, close_p_side,
+        close_price, close_at, clv, result, profit, graded_at)
+    SELECT created_at, game_id, 'h2h', COALESCE(line_type, 'early'), CASE WHEN COALESCE(line_type,'early')='early' THEN 1 ELSE 0 END,
+        game_date, start_utc, home, away, CASE WHEN side='home' THEN 'a' ELSE 'b' END, pick_team, 0, p_model,
+        p_market, edge, best_price, best_book, med_price, books, close_p_side, close_price, close_at, clv, result,
+        profit, graded_at
+    FROM paper_picks;
+    """),
 ]
 
 

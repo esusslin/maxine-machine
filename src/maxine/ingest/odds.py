@@ -5,9 +5,21 @@ from datetime import datetime, timezone
 from maxine.config import ODDS_API_KEY, ODDS_BASE
 from maxine.http import get, raw_path
 
-SPORTS = {"nhl": "icehockey_nhl", "ahl": "icehockey_ahl"}
-MARKETS = "h2h,spreads,totals"
-REGIONS = "us"
+# feed -> (sport key, regions, markets). nhl_eu: EU books price the NHL moneyline in REGULATION time
+# with a Draw outcome, which is the regulation 3-way market. Stored under its own feed name so the
+# US moneyline consensus (market_lines) is unchanged.
+FEEDS = {
+    "nhl": ("icehockey_nhl", "us", "h2h,spreads,totals"),
+    "ahl": ("icehockey_ahl", "us", "h2h,spreads,totals"),
+    "nhl_eu": ("icehockey_nhl", "eu", "h2h"),
+}
+SPORTS = {k: v[0] for k, v in FEEDS.items()}
+LIVE_FEEDS = ("nhl", "ahl")          # what `maxine odds --league all` and `maxine daily` pull
+
+
+def credits_per_historical(feed: str) -> int:
+    _, regions, markets = FEEDS[feed]
+    return 10 * len(regions.split(",")) * len(markets.split(","))
 
 
 def _require_key() -> str:
@@ -18,9 +30,9 @@ def _require_key() -> str:
 
 def snapshot(league: str) -> dict:
     """Current odds for one league. Returns {path, events, credits_used_this_call, credits_remaining}."""
-    sport = SPORTS[league]
+    sport, regions, markets = FEEDS[league]
     resp = get(f"{ODDS_BASE}/sports/{sport}/odds", params={
-        "apiKey": _require_key(), "regions": REGIONS, "markets": MARKETS,
+        "apiKey": _require_key(), "regions": regions, "markets": markets,
         "oddsFormat": "decimal", "dateFormat": "iso",
     }, min_interval=1.0)
     now = datetime.now(timezone.utc)
@@ -44,9 +56,9 @@ def snapshot(league: str) -> dict:
 
 def historical_snapshot(league: str, at_iso: str) -> dict:
     """Historical odds at a UTC timestamp (paid plans; 10 credits per market per region)."""
-    sport = SPORTS[league]
+    sport, regions, markets = FEEDS[league]
     resp = get(f"{ODDS_BASE}/historical/sports/{sport}/odds", params={
-        "apiKey": _require_key(), "regions": REGIONS, "markets": MARKETS,
+        "apiKey": _require_key(), "regions": regions, "markets": markets,
         "oddsFormat": "decimal", "dateFormat": "iso", "date": at_iso,
     }, min_interval=1.0)
     safe = at_iso.replace(":", "-")

@@ -167,32 +167,27 @@
   <!-- ============ board ============ -->
   <div x-show="tab==='board'" class="px-4 space-y-2">
     <p class="text-[11px] text-slate-500" x-show="board.updated_at"
-       x-text="'Priced '+ago(board.updated_at)+' · picks need edge ≥ '+pct(board.min_edge,0)+(board.game_day_picks?' · early and game-day lines':' · early line only')"></p>
+       x-text="'Priced '+ago(board.updated_at)+(board.game_day_picks?' · early and game-day lines':' · early line only')+' · min edge ML '+pct((board.min_edges||{}).h2h,0)+', total '+pct((board.min_edges||{}).totals,0)+', puck line '+pct((board.min_edges||{}).spreads,0)+', reg '+pct((board.min_edges||{}).reg3,0)"></p>
     <p class="text-sm text-slate-500 card p-4" x-show="!(board.records||[]).length">
-      No board yet. It is built every evening at 6:30 PT, or from Admin → Run picks.
+      No board yet. Built at 9:30 and 18:30 PT, or from Admin → Run picks.
     </p>
-    <template x-for="g in boardRows()" :key="g.game_id">
-      <div class="card p-3" :class="g.is_pick ? 'tierA' : 'tierC'">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm"><span x-text="g.away"></span> @ <span x-text="g.home"></span></p>
-            <p class="text-[11px] text-slate-500" x-text="when(g.start_utc)+' · '+(g.early?'early line':'game-day line')+(g.clean?'':' · plays before this')"></p>
-          </div>
-          <span x-show="g.is_pick" class="text-[11px] px-2 py-0.5 rounded"
-                :class="g.early ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900/60 text-amber-300'"
-                x-text="'PICK · '+(g.early ? 'early' : 'game-day')"></span>
-        </div>
-        <template x-if="g.p_market!==null">
-          <div class="mt-2 grid grid-cols-4 gap-2 text-center">
-            <div><p class="text-[10px] text-slate-500">model (home)</p><p class="text-sm" x-text="pct(g.p_model)"></p></div>
-            <div><p class="text-[10px] text-slate-500">market (home)</p><p class="text-sm" x-text="pct(g.p_market)"></p></div>
-            <div><p class="text-[10px] text-slate-500">edge</p><p class="text-sm" :class="g.edge>=board.min_edge?'text-emerald-400':''" x-text="'+'+pct(g.edge)"></p></div>
-            <div><p class="text-[10px] text-slate-500">lean</p><p class="text-sm" x-text="g.pick_team"></p></div>
+    <template x-for="g in boardGames()" :key="g.game_id">
+      <div class="card p-3" :class="g.rows.some(r=>r.is_pick) ? 'tierA' : 'tierC'">
+        <p class="text-sm"><span x-text="g.away"></span> @ <span x-text="g.home"></span></p>
+        <p class="text-[11px] text-slate-500 mb-2" x-text="when(g.start_utc)+' · '+(g.early?'early line':'game-day line')+(g.clean?'':' · a team plays before this, no picks')"></p>
+        <template x-for="r in g.rows" :key="r.market">
+          <div class="py-1.5 border-t border-slate-800">
+            <div class="flex items-center justify-between">
+              <p class="text-[12px]"><span class="text-slate-500" x-text="marketLabel(r.market)+' · '"></span><span x-text="r.selection || 'no line yet'"></span></p>
+              <span x-show="r.is_pick" class="text-[10px] px-2 py-0.5 rounded"
+                    :class="r.validated ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900/60 text-amber-300'"
+                    x-text="r.validated ? 'PICK' : 'PICK · unproven'"></span>
+            </div>
+            <p x-show="r.p_market!==null" class="text-[11px] text-slate-400"
+               x-text="'model '+pct(r.p_model)+' · market '+pct(r.p_market)+' · edge '+(r.edge>=0?'+':'')+pct(r.edge)+' · best '+dec(r.best_price)+' ('+american(r.best_price)+') '+bookName(r.best_book)"></p>
+            <p x-show="r.p_market===null" class="text-[11px] text-slate-500" x-text="'model '+pct(r.p_model)+' home'"></p>
           </div>
         </template>
-        <p x-show="g.p_market!==null" class="text-[12px] text-slate-400 mt-2"
-           x-text="'Best price '+dec(g.best_price)+' ('+american(g.best_price)+') at '+bookName(g.best_book)+' · '+g.books+' books'"></p>
-        <p x-show="g.p_market===null" class="text-[12px] text-slate-500 mt-2" x-text="'Model '+pct(g.p_model)+' home · no line posted yet'"></p>
       </div>
     </template>
   </div>
@@ -200,7 +195,7 @@
   <!-- ============ paper picks ============ -->
   <div x-show="tab==='picks'" class="px-4">
     <div class="card p-4 mb-3 grid grid-cols-3 gap-3 text-center">
-      <div><p class="text-[10px] text-slate-500">record</p><p class="text-sm" x-text="(paperRec.wins??0)+'-'+((paperRec.bets??0)-(paperRec.wins??0))"></p></div>
+      <div><p class="text-[10px] text-slate-500">record</p><p class="text-sm" x-text="(paperRec.wins??0)+'-'+(paperRec.losses??0)+(paperRec.pushes?('-'+paperRec.pushes):'')"></p></div>
       <div><p class="text-[10px] text-slate-500">units</p><p class="text-sm" x-text="paperRec.units??'—'"></p></div>
       <div><p class="text-[10px] text-slate-500">ROI</p><p class="text-sm" x-text="paperRec.roi==null?'—':pct(paperRec.roi)"></p></div>
       <div><p class="text-[10px] text-slate-500">avg CLV</p><p class="text-sm" x-text="paperRec.avg_clv==null?'—':pct(paperRec.avg_clv)"></p></div>
@@ -208,24 +203,24 @@
       <div><p class="text-[10px] text-slate-500">open</p><p class="text-sm" x-text="paperRec.open??0"></p></div>
     </div>
     <div class="card p-3 mb-3 text-[12px] space-y-1">
-      <template x-for="lt in ['early','game-day']" :key="lt">
-        <p :class="lt==='early'?'text-emerald-300':'text-amber-300'"
-           x-text="lt+': '+((paperByLine[lt]||{}).wins??0)+'-'+(((paperByLine[lt]||{}).bets??0)-((paperByLine[lt]||{}).wins??0))
-             +' · '+((paperByLine[lt]||{}).units??0)+'u · beat close '+((paperByLine[lt]||{}).beat_close_pct==null?'—':pct(paperByLine[lt].beat_close_pct,0))"></p>
+      <p class="text-slate-300 mb-1">By market</p>
+      <template x-for="(r,key) in paperByMarket" :key="key">
+        <p :class="(key==='h2h|early'||key==='totals|early')?'text-emerald-300':'text-amber-300'"
+           x-text="marketLabel(key.split('|')[0])+' · '+key.split('|')[1]+': '+r.wins+'-'+r.losses+(r.pushes?('-'+r.pushes):'')+' · '+r.units+'u · beat close '+(r.beat_close_pct==null?'—':pct(r.beat_close_pct,0))+' · open '+r.open"></p>
       </template>
-      <p class="text-slate-500">Game-day picks had no edge in the backtest; this record shows whether that holds live.</p>
+      <p class="text-slate-500" x-show="!Object.keys(paperByMarket).length">No bets yet.</p>
+      <p class="text-slate-500">Green = backtested edge (moneyline and totals, early line). Amber = unproven; this record decides.</p>
     </div>
-    <p class="text-sm text-slate-500 card p-4" x-show="!paper.length">No paper picks yet.</p>
     <div class="space-y-2">
       <template x-for="p in paper" :key="p.id">
         <div class="card p-3" :class="p.result==='W'?'tierA':(p.result==='L'?'tierC':'tierB')">
           <div class="flex items-center justify-between">
-            <p class="text-sm" x-text="p.pick_team+' ('+p.away+' @ '+p.home+')'"></p>
+            <p class="text-sm" x-text="p.selection+' ('+p.away+' @ '+p.home+')'"></p>
             <span class="text-[11px]" :class="p.result==='W'?'text-emerald-400':(p.result==='L'?'text-red-400':'text-slate-400')"
                   x-text="p.result ? (p.result+' '+(p.profit>0?'+':'')+p.profit.toFixed(2)+'u') : 'open'"></span>
           </div>
           <p class="text-[11px] text-slate-500 mt-1"
-             x-text="(p.line_type||'early')+' · '+when(p.start_utc)+' · bet '+dec(p.best_price)+' at '+bookName(p.best_book)+' · edge +'+pct(p.edge)"></p>
+             x-text="marketLabel(p.market)+' · '+(p.line_type||'early')+(p.validated?'':' · unproven')+' · '+when(p.start_utc)+' · bet '+dec(p.best_price)+' at '+bookName(p.best_book)+' · edge +'+pct(p.edge)"></p>
           <p class="text-[11px] mt-1" :class="p.clv>0?'text-emerald-400':'text-slate-400'"
              x-text="p.clv==null ? 'close not captured yet' : ('close '+dec(p.close_price)+' · CLV '+(p.clv>0?'+':'')+pct(p.clv))"></p>
         </div>
@@ -260,6 +255,12 @@
             </div>
           </template>
           <p class="text-[11px] text-slate-500 mt-2" x-text="'Generated '+model.generated"></p>
+        </div>
+        <div class="card p-4" x-show="model.markets">
+          <p class="mb-2">Every market, early line (2023-26)</p>
+          <template x-for="row in ((model.markets||{}).bets||[]).filter(r=>r.bet_time==='early')">
+            <p class="text-[12px] text-slate-400" x-text="marketLabel(row.market)+' ≥ '+pct(row.min_edge,0)+': '+row.bets+' bets · moved our way '+(row.clv_pos_pct==null?'—':pct(row.clv_pos_pct,0))+' · ROI '+pct(row.roi)"></p>
+          </template>
         </div>
         <div class="card p-4" x-show="model.clv">
           <p class="mb-2">Edge ≥ 5%: does the line move our way?</p>
@@ -335,7 +336,7 @@ function algo(){return{
   inviteCode:'', inviteValid:false, inviteReason:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
-  board:{records:[]}, paper:[], paperRec:{}, paperByLine:{}, betnhl:[], model:{}, status:{}, invites:[], jobMsg:'',
+  board:{records:[]}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, betnhl:[], model:{}, status:{}, invites:[], jobMsg:'',
 
   tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'betnhl',label:'BetNHL'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
@@ -344,7 +345,12 @@ function algo(){return{
     betnhl:'Their free daily tips',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
   glossary(){
     if(this.tab==='board') return [
-      {term:'model / market',def:'Home team win probability (including OT and shootouts). Market is the median across books with the bookmaker margin removed.'},
+      {term:'model / market',def:'Probability of the listed selection. Market is the median across books with the bookmaker margin removed.'},
+      {term:'Moneyline',def:'Winner including overtime and shootouts.'},
+      {term:'Total',def:'Final goals, over or under the line. The overtime or shootout winner is credited one goal.'},
+      {term:'Puck line',def:'Final margin with a 1.5-goal handicap (+1.5 / -1.5). An overtime or shootout result is a one-goal margin.'},
+      {term:'Regulation',def:'Result after 60 minutes only: home, away or tie. Overtime does not count.'},
+      {term:'unproven',def:'Puck line, regulation and game-day picks had no demonstrated edge in the backtest. They are tracked separately so the live record can show whether they work.'},
       {term:'edge',def:'How much more likely our side is to win than the market says, in percentage points.'},
       {term:'early line',def:'A game on a later date than today. The backtest found an edge only here; by game day the market has caught up.'},
       {term:'plays before this',def:'One of the teams has another game first, so the model would be missing a result the bet depends on. Never a pick.'},
@@ -414,7 +420,7 @@ function algo(){return{
     this.user=await me.json();
     if(!this.profilePhone) this.profilePhone=this.user.phone||'';
     if(this.tab==='board') this.board=await this.get('/api/board');
-    if(this.tab==='picks'){ const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{} }
+    if(this.tab==='picks'){ const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{}; this.paperByMarket=d.by_market||{} }
     if(this.tab==='betnhl') this.betnhl=(await this.get('/api/betnhl')).picks||[];
     if(this.tab==='model') this.model=await this.get('/api/model');
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }
@@ -434,7 +440,13 @@ function algo(){return{
   },
   copyInvite(code){ const url=location.origin+'/app?invite='+code; navigator.clipboard.writeText(url); alert('Copied:\n'+url) },
 
-  boardRows(){ return [...(this.board.records||[])].sort((a,b)=>(b.is_pick-a.is_pick)||(a.start_utc<b.start_utc?-1:1)) },
+  boardGames(){
+    const order={h2h:0,totals:1,spreads:2,reg3:3}, by={};
+    for(const r of (this.board.records||[])){ (by[r.game_id] ||= {game_id:r.game_id,home:r.home,away:r.away,start_utc:r.start_utc,early:r.early,clean:r.clean,rows:[]}).rows.push(r) }
+    const gs=Object.values(by); gs.forEach(g=>g.rows.sort((a,b)=>order[a.market]-order[b.market]));
+    return gs.sort((a,b)=>(b.rows.some(r=>r.is_pick)-a.rows.some(r=>r.is_pick))||(a.start_utc<b.start_utc?-1:1));
+  },
+  marketLabel(m){ return {h2h:'Moneyline',totals:'Total',spreads:'Puck line',reg3:'Regulation'}[m]||m },
   pct(x,d=1){ return x==null?'—':(x*100).toFixed(d)+'%' },
   dec(x){ return x==null?'—':Number(x).toFixed(2) },
   american(x){ if(!x) return '—'; return x>=2 ? '+'+Math.round((x-1)*100) : '-'+Math.round(100/(x-1)) },

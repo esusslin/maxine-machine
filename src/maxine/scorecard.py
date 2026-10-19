@@ -8,7 +8,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-from maxine import backtest, clv
+from maxine import backtest, clv, markets_bt
 
 OUT = Path("reports/scorecard.json")
 
@@ -18,7 +18,7 @@ def build(con) -> dict:
     bt["tuned_params"] = dataclasses.asdict(bt["tuned_params"])
     bt["by_season"] = {str(k): v for k, v in bt["by_season"].items()}
     bt["shot_model_coefs"] = {str(k): v for k, v in bt["shot_model_coefs"].items()}
-    return {"generated": date.today().isoformat(), "backtest": bt, "clv": clv.run(con)}
+    return {"generated": date.today().isoformat(), "backtest": bt, "clv": clv.run(con), "markets": markets_bt.run(con)}
 
 
 def write(con) -> Path:

@@ -43,7 +43,12 @@ ADMIN_USERNAME=emmet
 ADMIN_PASSWORD=<8+ characters>
 ADMIN_PHONE=+1...
 
-MIN_EDGE=0.05
+MIN_EDGE_H2H=0.05
+MIN_EDGE_TOTALS=0.03
+MIN_EDGE_SPREADS=0.05
+MIN_EDGE_REG3=0.05
+GAME_DAY_PICKS=true
+REG3_FEED=true
 ENABLE_JOBS=true
 BOOTSTRAP_ON_EMPTY=true
 
@@ -68,10 +73,11 @@ so changing the variable is the recovery path if you forget the password.
 |---|---|---|
 | 03:30 | Results, xG, grade paper picks | 0 |
 | 10:00 | BetNHL tips snapshot | 0 |
-| 18:30 | Early-line picks for tomorrow | 3 |
-| every 15 min 09:00–20:45 | Closing price, only when a picked game starts within 30 min | 3 per capture |
+| 09:30 | Picks, all markets: today (game-day) + tomorrow (early) | 4 (US 3 + EU 1) |
+| 18:30 | Picks, all markets: tomorrow (early) + today's games not started | 4 |
+| every 15 min 09:00–20:45 | Closing price, only when a picked game starts within 30 min | 3, +1 if a regulation bet is due |
 
-About 15–20 credits a day: the 20K Odds API plan covers it.
+About 20–40 credits a day: the 20K Odds API plan covers it.
 
 ## Monitoring
 
