@@ -57,7 +57,13 @@ def run(con, warmup_season: int = 20212022) -> dict:
     games = load_games(con)
     market = dict(con.execute("SELECT game_id, p_home_close FROM market_lines").fetchall())
     market_open = dict(con.execute("SELECT game_id, p_home_open FROM market_lines").fetchall())
-    seasons = sorted({g[1] for g in games if g[1] != warmup_season})
+    # only seasons with historical closing lines: the current season is collected live, not backfilled
+    # (a few live snapshots can match current-season games, so require a full season's worth)
+    counts: dict[int, int] = {}
+    for g in games:
+        if g[1] != warmup_season and g[0] in market:
+            counts[g[1]] = counts.get(g[1], 0) + 1
+    seasons = sorted(s for s, n in counts.items() if n >= 500)
     train, test = set(seasons[:2]), set(seasons[2:])
 
     tuned = tune_elo(games, market, train)
