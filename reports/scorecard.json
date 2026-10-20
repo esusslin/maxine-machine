@@ -483,8 +483,8 @@
   "markets": {
     "built": {
       "line_markets": {
-        "totals": 81448,
-        "spreads": 55408
+        "spreads": 55408,
+        "totals": 81448
       },
       "reg3_snapshots": 55657
     },
@@ -507,11 +507,11 @@
       },
       {
         "market": "totals",
-        "n": 3731,
-        "model": 0.692,
-        "market_morning": 0.6918,
-        "model_same_games_as_close": 0.692,
-        "market_close": 0.6913
+        "n": 3729,
+        "model": 0.6922,
+        "market_morning": 0.692,
+        "model_same_games_as_close": 0.6921,
+        "market_close": 0.6915
       }
     ],
     "bets": [
@@ -631,28 +631,28 @@
         "market": "spreads",
         "bet_time": "early",
         "min_edge": 0.03,
-        "bets": 377,
-        "avg_clv": 0.0055,
-        "clv_pos_pct": 0.594,
-        "roi": -0.0168,
+        "bets": 379,
+        "avg_clv": 0.0056,
+        "clv_pos_pct": 0.597,
+        "roi": -0.022,
         "seasons_roi": {
           "20232024": -0.065,
-          "20242025": 0.249,
-          "20252026": -0.09
+          "20242025": 0.232,
+          "20252026": -0.093
         }
       },
       {
         "market": "spreads",
         "bet_time": "early",
         "min_edge": 0.05,
-        "bets": 161,
-        "avg_clv": 0.0051,
-        "clv_pos_pct": 0.566,
-        "roi": 0.079,
+        "bets": 163,
+        "avg_clv": 0.0053,
+        "clv_pos_pct": 0.571,
+        "roi": 0.0657,
         "seasons_roi": {
           "20232024": -0.032,
-          "20242025": 0.592,
-          "20252026": 0.023
+          "20242025": 0.512,
+          "20252026": 0.014
         }
       },
       {
@@ -687,41 +687,41 @@
         "market": "totals",
         "bet_time": "early",
         "min_edge": 0.03,
-        "bets": 294,
-        "avg_clv": 0.0174,
-        "clv_pos_pct": 0.734,
-        "roi": 0.0779,
+        "bets": 273,
+        "avg_clv": 0.0178,
+        "clv_pos_pct": 0.741,
+        "roi": 0.0929,
         "seasons_roi": {
           "20232024": 0.116,
-          "20242025": -0.03,
-          "20252026": 0.123
+          "20242025": -0.024,
+          "20252026": 0.157
         }
       },
       {
         "market": "totals",
         "bet_time": "early",
         "min_edge": 0.05,
-        "bets": 111,
-        "avg_clv": 0.0243,
-        "clv_pos_pct": 0.794,
-        "roi": 0.0912,
+        "bets": 98,
+        "avg_clv": 0.0252,
+        "clv_pos_pct": 0.788,
+        "roi": 0.0567,
         "seasons_roi": {
           "20232024": 0.105,
-          "20242025": -0.001,
-          "20252026": 0.236
+          "20242025": -0.114,
+          "20252026": 0.132
         }
       },
       {
         "market": "totals",
         "bet_time": "morning",
         "min_edge": 0.03,
-        "bets": 1356,
-        "avg_clv": 0.0013,
-        "clv_pos_pct": 0.478,
-        "roi": 0.0242,
+        "bets": 1266,
+        "avg_clv": 0.0016,
+        "clv_pos_pct": 0.481,
+        "roi": 0.0358,
         "seasons_roi": {
-          "20232024": 0.008,
-          "20242025": 0.036,
+          "20232024": 0.004,
+          "20242025": 0.076,
           "20252026": 0.046
         }
       },
@@ -729,14 +729,14 @@
         "market": "totals",
         "bet_time": "morning",
         "min_edge": 0.05,
-        "bets": 464,
+        "bets": 391,
         "avg_clv": 0.0022,
-        "clv_pos_pct": 0.487,
-        "roi": -0.0195,
+        "clv_pos_pct": 0.492,
+        "roi": -0.0045,
         "seasons_roi": {
-          "20232024": 0.013,
-          "20242025": -0.067,
-          "20252026": -0.202
+          "20232024": 0.025,
+          "20242025": -0.148,
+          "20252026": 0.07
         }
       }
     ]
