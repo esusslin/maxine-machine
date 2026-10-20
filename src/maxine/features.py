@@ -14,7 +14,8 @@ import pandas as pd
 from maxine.models import elo
 from maxine.teams import FRANCHISE_PREDECESSOR
 
-HALF_LIFE_GAMES = 25
+HALF_LIFE_GAMES = 15     # tuned 2026-10-20 (docs/experiments.md): 15 beat 25 in every test season
+XG_COL = "xg"            # "xg" (raw) or "xg_adj" (score-adjusted: tested, no gain, see docs/experiments.md)
 GSAX_PSEUDO_SHOTS = 3000
 REST_CAP = 4
 
@@ -24,9 +25,9 @@ def _team_games(con) -> pd.DataFrame:
         SELECT game_id, season, start_utc, game_date, home, away, home_score, away_score
         FROM games WHERE league = 'NHL' AND game_type = 2 ORDER BY start_utc, game_id
     """).df()
-    xg = con.execute("""
+    xg = con.execute(f"""
         SELECT game_id, team,
-               sum(xg) AS xgf, sum(CASE WHEN strength = '5v5' THEN xg END) AS xgf_5v5
+               sum({XG_COL}) AS xgf, sum(CASE WHEN strength = '5v5' THEN {XG_COL} END) AS xgf_5v5
         FROM shot_xg WHERE xg IS NOT NULL GROUP BY game_id, team
     """).df()
     rows = []

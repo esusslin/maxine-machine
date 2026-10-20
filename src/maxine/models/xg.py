@@ -61,6 +61,13 @@ def shot_frame(con) -> pd.DataFrame:
     df["ot"] = (df["period"] >= 4).astype(int)
     df["shot_type"] = df["shot_type"].fillna("unknown")
     df["goal"] = (df["event_type"] == "goal").astype(int)
+
+    # score state before each event, from the shooting team's point of view (regulation + OT, not shootout)
+    g = (df["event_type"] == "goal") & ~df["shootout"]
+    home_goals = (g & df["is_home"]).groupby(df["game_id"]).cumsum() - (g & df["is_home"]).astype(int)
+    away_goals = (g & ~df["is_home"]).groupby(df["game_id"]).cumsum() - (g & ~df["is_home"]).astype(int)
+    diff = np.where(df["is_home"], home_goals - away_goals, away_goals - home_goals)
+    df["score_diff"] = np.clip(diff, -2, 2)
     return df
 
 
@@ -70,6 +77,17 @@ def _model():
         ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL),
     ])
     return make_pipeline(pre, LogisticRegression(max_iter=1000))
+
+
+SCORE_ADJ_FIT_BEFORE = 20232024   # weights fit on seasons before this one only (no look-ahead into tests)
+
+
+def score_weights(scored: pd.DataFrame) -> dict[int, float]:
+    """5v5 score-state weights: 0.5 / (shooting team's average share of xG in that score state).
+    Trailing teams pile up shots (share > 50%) so their shots count less; leading teams' count more."""
+    five = scored[(scored["strength"] == "5v5") & ~scored["empty_net"] & (scored["season"] < SCORE_ADJ_FIT_BEFORE)]
+    by = five.groupby("score_diff")["xg"].sum()
+    return {int(d): float(0.5 / (by[d] / (by[d] + by[-d]))) for d in by.index if -d in by.index}
 
 
 def score_shots(con) -> dict:
@@ -87,12 +105,16 @@ def score_shots(con) -> dict:
         cur["xg"] = model.predict_proba(cur[NUMERIC + CATEGORICAL])[:, 1]
         cur.loc[cur["empty_net"], "xg"] = np.nan          # not a goalie-facing shot
         parts.append(cur)
-    out = pd.concat(parts)[["game_id", "event_id", "season", "team", "opp", "is_home", "strength",
-                            "empty_net", "goalie_id", "goal", "xg"]]
+    out = pd.concat(parts)
+    w = score_weights(out)
+    adj = out["score_diff"].map(w).fillna(1.0)
+    out["xg_adj"] = np.where(out["strength"] == "5v5", out["xg"] * adj, out["xg"])
+    out = out[["game_id", "event_id", "season", "team", "opp", "is_home", "strength", "score_diff",
+               "empty_net", "goalie_id", "goal", "xg", "xg_adj"]]
     con.register("_xg", out)
     con.execute("CREATE OR REPLACE TABLE shot_xg AS SELECT * FROM _xg")
     con.unregister("_xg")
     ev = out.dropna(subset=["xg"])
     by_season = ev.groupby("season").agg(shots=("goal", "size"), goals=("goal", "sum"), xg=("xg", "sum"))
-    return {"shots_scored": int(len(ev)),
+    return {"shots_scored": int(len(ev)), "score_weights": {k: round(v, 3) for k, v in w.items()},
             "goals_vs_xg_by_season": {int(s): (int(r.goals), round(float(r.xg))) for s, r in by_season.iterrows()}}
