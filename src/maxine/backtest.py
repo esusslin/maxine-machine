@@ -84,7 +84,8 @@ def run(con, warmup_season: int = 20212022) -> dict:
     has_xg = con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'shot_xg'").fetchone()[0]
     coefs = {}
     if has_xg:
-        wp, coefs = winprob.walk_forward(features.game_features(con), first_test_season=seasons[0])
+        wp, coefs = winprob.walk_forward(features.game_features(con), first_test_season=seasons[0],
+                                         features=[f for f in features.FEATURES if f != features.ACTUAL_GOALIE])
         models["shot_model"] = wp
         models = {k: models[k] for k in ["home_rate", "elo_default", "elo_tuned", "shot_model", "market_open", "market_close"]}
 

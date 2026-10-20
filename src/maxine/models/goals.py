@@ -15,7 +15,9 @@
      regulation 3-way P(home reg win), P(reg tie), P(away reg win)
      totals L         P(final total > L), P(< L), P(= L) (push, whole-number lines)
      spread h (home)  P(home final margin + h > 0), push when = 0
-Starting goalies are not used (unknown at bet time).
+5. Goalies: each side's rate uses the opponent's expected starter quality (goalies.py; the starter is
+   unknown at bet time). The goalie shifts who scores, not how many: lambdas are rescaled so their sum
+   equals that of a twin model without the goalie input (adding it to totals made totals slightly worse).
 """
 from __future__ import annotations
 
@@ -28,11 +30,13 @@ from sklearn.linear_model import LogisticRegression, PoissonRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from maxine import goalies
 from maxine.features import team_form
 
 MAX_GOALS = 12
-SIDE_FEATURES = ["own_pre_xgf", "own_pre_gf", "opp_pre_xga", "opp_pre_ga", "is_home",
-                 "own_b2b", "opp_b2b", "own_rest", "opp_rest"]
+TOTAL_FEATURES = ["own_pre_xgf", "own_pre_gf", "opp_pre_xga", "opp_pre_ga", "is_home",
+                  "own_b2b", "opp_b2b", "own_rest", "opp_rest"]
+SIDE_FEATURES = TOTAL_FEATURES + ["opp_exp_gsax30"]
 
 
 def regulation_goals(con) -> pd.DataFrame:
@@ -60,19 +64,20 @@ def side_frame(con) -> pd.DataFrame:
         columns={"pre_xgf": "own_pre_xgf", "pre_gf": "own_pre_gf", "b2b": "own_b2b", "rest_days": "own_rest"})
     df["is_home"] = df["is_home"].astype(int)
     df = df.merge(regulation_goals(con), on=["game_id", "team"], how="left")
+    eg = goalies.expected(con).rename(columns={"team": "opp", "exp_gsax30": "opp_exp_gsax30"})
+    df = df.merge(eg, on=["game_id", "opp"], how="left").fillna({"opp_exp_gsax30": 0.0})
     return df
 
 
 @dataclass
 class GoalModel:
-    rate: object            # fitted Poisson regression pipeline
+    rate: object            # fitted Poisson regression pipeline (SIDE_FEATURES)
+    total_rate: object      # twin without the goalie input (TOTAL_FEATURES): fixes lam_h + lam_a
     tie_factor: float
     en_shift: float
     ot_a: float
     ot_b: float
 
-    def lambdas(self, sides: pd.DataFrame) -> np.ndarray:
-        return self.rate.predict(sides[SIDE_FEATURES])
 
 
 def _matrix(lh: float, la: float, tie_factor: float, en_shift: float = 0.0) -> np.ndarray:
@@ -106,7 +111,9 @@ def fit(train_sides: pd.DataFrame, train_games: pd.DataFrame) -> GoalModel:
     usable = train_sides.dropna(subset=SIDE_FEATURES + ["reg_goals"])
     rate = make_pipeline(StandardScaler(), PoissonRegressor(alpha=1e-4, max_iter=1000))
     rate.fit(usable[SIDE_FEATURES], usable["reg_goals"])
-    lam = _game_lambdas(rate, usable)
+    total_rate = make_pipeline(StandardScaler(), PoissonRegressor(alpha=1e-4, max_iter=1000))
+    total_rate.fit(usable[TOTAL_FEATURES], usable["reg_goals"])
+    lam = _game_lambdas(rate, total_rate, usable)
     g = train_games.merge(lam, on="game_id")
     pred_tie = np.array([_tie_prob(a, b) for a, b in zip(g["lam_h"], g["lam_a"])])
     tie_factor = float((g["home_reg"] == g["away_reg"]).mean() / pred_tie.mean())
@@ -125,19 +132,23 @@ def fit(train_sides: pd.DataFrame, train_games: pd.DataFrame) -> GoalModel:
     ot = g[g["home_reg"] == g["away_reg"]]
     x = np.log(ot["lam_h"] / ot["lam_a"]).to_numpy().reshape(-1, 1)
     lr = LogisticRegression(C=1.0).fit(x, ot["home_win"].astype(int))
-    return GoalModel(rate, tie_factor, en_shift, float(lr.intercept_[0]), float(lr.coef_[0][0]))
+    return GoalModel(rate, total_rate, tie_factor, en_shift, float(lr.intercept_[0]), float(lr.coef_[0][0]))
 
 
-def _game_lambdas(rate, sides: pd.DataFrame) -> pd.DataFrame:
+def _game_lambdas(rate, total_rate, sides: pd.DataFrame) -> pd.DataFrame:
     s = sides.copy()
     s["lam"] = rate.predict(s[SIDE_FEATURES])
-    h = s[s["is_home"] == 1][["game_id", "lam"]].rename(columns={"lam": "lam_h"})
-    a = s[s["is_home"] == 0][["game_id", "lam"]].rename(columns={"lam": "lam_a"})
-    return h.merge(a, on="game_id")
+    s["lam0"] = total_rate.predict(s[TOTAL_FEATURES])
+    h = s[s["is_home"] == 1][["game_id", "lam", "lam0"]].rename(columns={"lam": "lam_h", "lam0": "t_h"})
+    a = s[s["is_home"] == 0][["game_id", "lam", "lam0"]].rename(columns={"lam": "lam_a", "lam0": "t_a"})
+    g = h.merge(a, on="game_id")
+    k = (g["t_h"] + g["t_a"]) / (g["lam_h"] + g["lam_a"])
+    g["lam_h"], g["lam_a"] = g["lam_h"] * k, g["lam_a"] * k
+    return g[["game_id", "lam_h", "lam_a"]]
 
 
 def game_lambdas(model: GoalModel, sides: pd.DataFrame) -> pd.DataFrame:
-    return _game_lambdas(model.rate, sides.dropna(subset=SIDE_FEATURES))
+    return _game_lambdas(model.rate, model.total_rate, sides.dropna(subset=SIDE_FEATURES))
 
 
 def price(model: GoalModel, lam_h: float, lam_a: float) -> dict:
@@ -238,8 +249,11 @@ def fit_final(con) -> GoalModel:
     return fit(side_frame(con), game_outcomes(con))
 
 
-def fixture_sides(form: dict, fixtures: pd.DataFrame, rest_cap: int = 4) -> pd.DataFrame:
-    """Two side rows per upcoming fixture from each team's latest form (features.latest_form)."""
+def fixture_sides(form: dict, fixtures: pd.DataFrame, rest_cap: int = 4,
+                  goalie_exp: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Two side rows per upcoming fixture from each team's latest form (features.latest_form) and the
+    expected starters (goalies.upcoming; average goalie if not given)."""
+    eg = {} if goalie_exp is None else {(r.game_id, r.team): r.exp_gsax30 for r in goalie_exp.itertuples()}
     rows = []
     for f in fixtures.itertuples():
         h, a = form.get(f.home), form.get(f.away)
@@ -252,5 +266,6 @@ def fixture_sides(form: dict, fixtures: pd.DataFrame, rest_cap: int = 4) -> pd.D
                          "own_pre_xgf": form[own]["xgf"], "own_pre_gf": form[own]["gf"],
                          "opp_pre_xga": form[opp]["xga"], "opp_pre_ga": form[opp]["ga"],
                          "own_b2b": int(rest[own] == 0), "opp_b2b": int(rest[opp] == 0),
-                         "own_rest": rest[own], "opp_rest": rest[opp]})
+                         "own_rest": rest[own], "opp_rest": rest[opp],
+                         "opp_exp_gsax30": eg.get((f.game_id, opp), 0.0)})
     return pd.DataFrame(rows)

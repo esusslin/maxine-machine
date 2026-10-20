@@ -2,15 +2,17 @@
 
 Team form: exponentially weighted (half-life in games) 5v5 xG share, all-situation xG for/against
 per game, goal share. Continues across seasons (no reset), so early-season games lean on last season.
-Goalie: starter's career GSAx per shot faced before this game, shrunk toward 0 with a pseudo-count.
+Goalie (actual starter, research only): starter's career GSAx per shot before this game, shrunk toward 0.
+Goalie (expected starter, used for picks): probability-weighted quality of the likely starters (goalies.py).
 Rest: days since the team's previous game (capped), back-to-back flag.
 
-Known look-ahead: the starting goalie comes from the box score. Live, it must come from confirmed
-starters (Daily Faceoff / news agent) before puck drop.
+gsax30_diff uses the actual starter from the box score (look-ahead: only for measuring the ceiling).
+exp_gsax30_diff uses only information available before the starter is announced.
 """
 import numpy as np
 import pandas as pd
 
+from maxine import goalies
 from maxine.models import elo
 from maxine.teams import FRANCHISE_PREDECESSOR
 
@@ -89,8 +91,9 @@ def goalie_form(con) -> pd.DataFrame:
 
 
 # elo_logit is computed but not used by default: it added nothing out of sample once xG and goal form were in
-FEATURES = ["xg_share_5v5_diff", "xg_net_diff", "goal_net_diff", "gsax30_diff",
+FEATURES = ["xg_share_5v5_diff", "xg_net_diff", "goal_net_diff", "gsax30_diff", "exp_gsax30_diff",
             "home_b2b", "away_b2b", "rest_diff"]
+ACTUAL_GOALIE = "gsax30_diff"   # look-ahead; never used for picks
 
 
 def game_features(con) -> pd.DataFrame:
@@ -98,7 +101,10 @@ def game_features(con) -> pd.DataFrame:
     gf = goalie_form(con)
     tf = tf.merge(gf[["game_id", "team", "pre_gsax30"]], on=["game_id", "team"], how="left")
     tf["pre_gsax30"] = tf["pre_gsax30"].fillna(0.0)
-    cols = ["game_id", "pre_xg_share_5v5", "pre_xg_net", "pre_goal_net", "pre_gsax30", "rest_days", "b2b"]
+    tf = tf.merge(goalies.expected(con), on=["game_id", "team"], how="left")
+    tf["exp_gsax30"] = tf["exp_gsax30"].fillna(0.0)
+    cols = ["game_id", "pre_xg_share_5v5", "pre_xg_net", "pre_goal_net", "pre_gsax30", "exp_gsax30",
+            "rest_days", "b2b"]
     h = tf[tf["is_home"]][cols + ["season", "start_utc", "gf", "ga"]].add_prefix("h_")
     a = tf[~tf["is_home"]][cols].add_prefix("a_")
     df = h.merge(a, left_on="h_game_id", right_on="a_game_id")
@@ -114,6 +120,7 @@ def game_features(con) -> pd.DataFrame:
     df["xg_net_diff"] = df["h_pre_xg_net"] - df["a_pre_xg_net"]
     df["goal_net_diff"] = df["h_pre_goal_net"] - df["a_pre_goal_net"]
     df["gsax30_diff"] = df["h_pre_gsax30"] - df["a_pre_gsax30"]
+    df["exp_gsax30_diff"] = df["h_exp_gsax30"] - df["a_exp_gsax30"]
     df["home_b2b"], df["away_b2b"] = df["h_b2b"], df["a_b2b"]
     df["rest_diff"] = df["h_rest_days"] - df["a_rest_days"]
     return df.sort_values("start_utc").reset_index(drop=True)
@@ -139,9 +146,13 @@ def latest_form(con) -> dict[str, dict]:
     return out
 
 
-def upcoming_features(con, fixtures: pd.DataFrame) -> pd.DataFrame:
-    """fixtures: game_id, game_date, home, away. Same feature definitions as game_features."""
+def upcoming_features(con, fixtures: pd.DataFrame, goalie_exp: pd.DataFrame | None = None) -> pd.DataFrame:
+    """fixtures: game_id, game_date, home, away. Same feature definitions as game_features.
+    goalie_exp: goalies.upcoming(...) output (computed here if not given)."""
     form = latest_form(con)
+    if goalie_exp is None:
+        goalie_exp = goalies.upcoming(con, fixtures)
+    eg = {(r.game_id, r.team): r.exp_gsax30 for r in goalie_exp.itertuples()}
     rows = []
     for f in fixtures.itertuples():
         h, a = form.get(f.home), form.get(f.away)
@@ -156,6 +167,7 @@ def upcoming_features(con, fixtures: pd.DataFrame) -> pd.DataFrame:
             "xg_net_diff": h["xg_net"] - a["xg_net"],
             "goal_net_diff": h["goal_net"] - a["goal_net"],
             "gsax30_diff": 0.0,
+            "exp_gsax30_diff": eg.get((f.game_id, f.home), 0.0) - eg.get((f.game_id, f.away), 0.0),
             "home_b2b": int(rest_h == 0), "away_b2b": int(rest_a == 0),
             "rest_diff": rest_h - rest_a,
         })

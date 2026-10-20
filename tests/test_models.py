@@ -23,3 +23,16 @@ def test_franchise_inherits_rating():
 def test_team_map_covers_utah_and_montreal():
     assert ODDS_NAME_TO_NHL["Utah Mammoth"] == ODDS_NAME_TO_NHL["Utah Hockey Club"] == "UTA"
     assert ODDS_NAME_TO_NHL["Montréal Canadiens"] == "MTL"
+
+
+def test_goalie_candidates_back_to_back():
+    import pandas as pd
+    from maxine import goalies
+    d = pd.Timestamp("2026-01-10")
+    starters = [1, 1, 2, 1, 1]
+    dates = [d - pd.Timedelta(days=k) for k in (9, 7, 5, 3, 1)]
+    last = {1: dates[-1], 2: dates[2]}
+    rows = {r["player_id"]: r for r in goalies._candidate_rows(starters, dates, last, d, {})}
+    assert set(rows) == {1, 2}
+    assert rows[1]["b2b"] == 1 and rows[1]["b2b_started_last"] == 1 and rows[2]["b2b_started_last"] == 0
+    assert rows[1]["share5"] == 0.8 and rows[2]["days_since"] == 5

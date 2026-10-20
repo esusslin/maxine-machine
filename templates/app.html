@@ -174,7 +174,8 @@
     <template x-for="g in boardGames()" :key="g.game_id">
       <div class="card p-3" :class="g.rows.some(r=>r.is_pick) ? 'tierA' : 'tierC'">
         <p class="text-sm"><span x-text="g.away"></span> @ <span x-text="g.home"></span></p>
-        <p class="text-[11px] text-slate-500 mb-2" x-text="when(g.start_utc)+' · '+(g.early?'early line':'game-day line')+(g.clean?'':' · a team plays before this, no picks')"></p>
+        <p class="text-[11px] text-slate-500" x-text="when(g.start_utc)+' · '+(g.early?'early line':'game-day line')+(g.clean?'':' · a team plays before this, no picks')"></p>
+        <p class="text-[11px] text-slate-500 mb-2" x-show="g.home_goalie||g.away_goalie" x-text="'Likely goalies: '+(g.away_goalie||'?')+' vs '+(g.home_goalie||'?')"></p>
         <template x-for="r in g.rows" :key="r.market">
           <div class="py-1.5 border-t border-slate-800">
             <div class="flex items-center justify-between">
@@ -282,16 +283,19 @@
       <p class="text-slate-400">The chance an unblocked shot becomes a goal, from distance and angle to the net, shot type, rebound (same team shot within 3 s), rush (other team had the puck within 4 s), skater advantage, third period and overtime. Logistic regression; each season scored by a model fit only on earlier seasons. Blocked shots, shootouts and empty-net shots excluded.</p>
 
       <p class="text-slate-200 pt-1">3 · Team form before each game</p>
-      <p class="text-slate-400">Exponentially weighted averages with a 25-game half-life, carried across seasons (October leans on last year; Utah continues Arizona): xG for and against per game, goals for and against per game, 5-on-5 xG share. Rest: days since the last game (capped at 4) and a back-to-back flag for each team. Starting goalies are not used, because at bet time the starter is usually unknown.</p>
+      <p class="text-slate-400">Exponentially weighted averages with a 15-game half-life, carried across seasons (October leans on last year; Utah continues Arizona): xG for and against per game, goals for and against per game, 5-on-5 xG share. Rest: days since the last game (capped at 4) and a back-to-back flag for each team.</p>
+
+      <p class="text-slate-200 pt-1">3b · Expected starting goalie</p>
+      <p class="text-slate-400">At bet time the starter is usually not announced, so each team's goalie input is a probability-weighted average of its possible starters. Candidates: every goalie who started one of the team's last 20 games. Chance each one starts: logistic regression on his share of the last 5, 10 and 20 starts, whether he started the previous game, whether the team is on a back-to-back (the goalie who played last night usually sits), and days since his last start; the chances add up to 100%. Each goalie's quality: career goals saved above expected per 30 shots, shrunk toward league average (3000 pseudo-shots, so a goalie with little history counts as average). The most likely starter is right about two times in three; the board shows him with his chance.</p>
 
       <p class="text-slate-200 pt-1">4a · Moneyline model (who wins, OT and shootout included)</p>
-      <p class="text-slate-400">Logistic regression on home-minus-away differences: xG differential, goal differential, 5v5 xG share, home back-to-back, away back-to-back, rest difference. The intercept is home ice. Then calibrated: p → sigmoid(a + b·logit p), fit on the model's own out-of-sample predictions, which pulls back overconfident calls.</p>
+      <p class="text-slate-400">Logistic regression on home-minus-away differences: xG differential, goal differential, 5v5 xG share, expected goalie quality, home back-to-back, away back-to-back, rest difference. The intercept is home ice. Then calibrated: p → sigmoid(a + b·logit p), fit on the model's own out-of-sample predictions, which pulls back overconfident calls.</p>
       <template x-if="(model.backtest||{}).shot_model_coefs">
         <p class="text-[12px] text-slate-500" x-text="'Current weights (standardized): '+Object.entries(model.backtest.shot_model_coefs[Object.keys(model.backtest.shot_model_coefs).sort().pop()]).map(([k,v])=>k+' '+v).join(' · ')"></p>
       </template>
 
       <p class="text-slate-200 pt-1">4b · Goal model (totals, puck line, regulation)</p>
-      <p class="text-slate-400">Each team's regulation goals ~ Poisson(λ), with λ from a Poisson regression on its own xG and goals for, the opponent's xG and goals against, home ice, back-to-backs and rest. From the two λs, a full score grid (0-12 goals each), then three corrections fit on past seasons:</p>
+      <p class="text-slate-400">Each team's regulation goals ~ Poisson(λ), with λ from a Poisson regression on its own xG and goals for, the opponent's xG and goals against, the opponent's expected goalie quality, home ice, back-to-backs and rest. The goalie decides who scores, not how many: the two λs are rescaled so their sum matches the same model without goalies (adding goalies to the total made totals slightly worse). From the two λs, a full score grid (0-12 goals each), then three corrections fit on past seasons:</p>
       <ul class="list-disc pl-5 text-slate-400">
         <li>Regulation ties are more common than independent goals predict: the tie cells are scaled up<span x-show="model.goal_model" x-text="' (×'+(model.goal_model||{}).tie_factor+')'"></span>.</li>
         <li>Empty-net goals: a share of one-goal wins become two-goal wins because the trailing team pulls its goalie<span x-show="model.goal_model" x-text="' ('+pct((model.goal_model||{}).en_shift,0)+')'"></span>.</li>
@@ -318,7 +322,7 @@
       <p class="text-slate-400">The bet is the first price seen, 1 unit flat. About 15-30 minutes before puck drop the closing price is captured for the same market and line; beating it (CLV) is the early sign the edge is real. Graded at 3:30 the next morning: final score for moneyline, totals and puck line; regulation goals only for the 3-way.</p>
 
       <p class="text-slate-200 pt-1">Not used yet</p>
-      <p class="text-slate-400">Starting goalies, injuries and lineups, special teams, travel distance, BetNHL picks, minor leagues.</p>
+      <p class="text-slate-400">Confirmed starting goalies (game day), injuries and lineups, special teams, travel distance, BetNHL picks, minor leagues.</p>
     </div>
 
     <p class="card p-4 text-slate-500" x-show="model.missing">No scorecard yet. Run <span class="font-mono">maxine scorecard</span> locally and commit reports/scorecard.json.</p>
@@ -509,7 +513,7 @@ function algo(){return{
 
   boardGames(){
     const order={h2h:0,totals:1,spreads:2,reg3:3}, by={};
-    for(const r of (this.board.records||[])){ (by[r.game_id] ||= {game_id:r.game_id,home:r.home,away:r.away,start_utc:r.start_utc,early:r.early,clean:r.clean,rows:[]}).rows.push(r) }
+    for(const r of (this.board.records||[])){ (by[r.game_id] ||= {game_id:r.game_id,home:r.home,away:r.away,start_utc:r.start_utc,early:r.early,clean:r.clean,home_goalie:r.home_goalie,away_goalie:r.away_goalie,rows:[]}).rows.push(r) }
     const gs=Object.values(by); gs.forEach(g=>g.rows.sort((a,b)=>order[a.market]-order[b.market]));
     return gs.sort((a,b)=>(b.rows.some(r=>r.is_pick)-a.rows.some(r=>r.is_pick))||(a.start_utc<b.start_utc?-1:1));
   },

@@ -12,7 +12,7 @@ Two kinds of pick, tracked separately:
 Validated (backtest, early line, 2023-26): moneyline (edge >= 5%: line moved our way 74%), totals
 (edge >= 3%: 67%) and regulation 3-way (edge >= 5%: 535 bets, 78%; prices from EU books). Puck line is
 unproven and tracked separately, like game-day picks.
-The starting goalie is not used (usually unknown this early). Picks are logged for paper trading.
+Goalies: the expected starter (goalies.py), since the starter is usually unknown this early. Picks are logged for paper trading.
 """
 import json
 from datetime import date, datetime, timedelta, timezone
@@ -20,14 +20,14 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from maxine import features, live_markets
+from maxine import features, goalies, live_markets
 from maxine.config import DATA_DIR
 from maxine.ingest import nhl, odds
 from maxine.models import goals, winprob, xg
 from maxine.teams import ODDS_NAME_TO_NHL
 from maxine.warehouse import load
 
-PICK_FEATURES = [f for f in features.FEATURES if f != "gsax30_diff"]
+PICK_FEATURES = [f for f in features.FEATURES if f != features.ACTUAL_GOALIE]
 CURRENT_SEASON = 20262027
 PACIFIC = ZoneInfo("America/Los_Angeles")
 MARKETS = ("h2h", "totals", "spreads", "reg3")
@@ -118,11 +118,12 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
 
     # models
     ml_predict = winprob.fit_final(features.game_features(con), PICK_FEATURES)
-    ml_feats = features.upcoming_features(con, fx)
+    gx = goalies.upcoming(con, fx)
+    ml_feats = features.upcoming_features(con, fx, gx)
     p_ml = dict(zip(ml_feats["game_id"], ml_predict(ml_feats))) if not ml_feats.empty else {}
     gm = goals.fit_final(con)
     cal = goals.calibrators(con)
-    lam = goals.game_lambdas(gm, goals.fixture_sides(features.latest_form(con), fx))
+    lam = goals.game_lambdas(gm, goals.fixture_sides(features.latest_form(con), fx, goalie_exp=gx))
     prices = {r.game_id: goals.price(gm, r.lam_h, r.lam_a) for r in lam.itertuples()}
 
     # odds
@@ -138,13 +139,15 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
         except Exception:  # noqa: BLE001 — regulation market is optional
             r3 = pd.DataFrame()
 
+    likely = {(r.game_id, r.team): f"{r.likely_goalie} ({r.likely_p:.0%})" for r in gx.itertuples()}
     today_pt = datetime.now(PACIFIC).date()
     rows = []
     for f in fx.itertuples():
         early = pd.to_datetime(f.game_date).date() > today_pt
         base = {"game_id": f.game_id, "game_date": f.game_date, "start_utc": f.start_utc, "home": f.home,
                 "away": f.away, "clean": bool(f.clean), "early": early,
-                "line_type": "early" if early else "game-day"}
+                "line_type": "early" if early else "game-day",
+                "home_goalie": likely.get((f.game_id, f.home)), "away_goalie": likely.get((f.game_id, f.away))}
         mk_all = _match(tw, f)
         pr = prices.get(f.game_id)
         # moneyline

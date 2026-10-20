@@ -41,3 +41,33 @@ Form pulled 20% or 40% toward last season's league average at each team's first 
 code path (the loop EWMA), the regression was neutral to slightly worse (ML early 69.1% -> 69.9%, totals early
 66% -> 64%). The loop EWMA itself (pandas adjust=False style) was worse than the pandas default, so the default
 stays and the regression code was removed.
+
+## 3. Expected starting goalie — adopted
+
+At early-line time the starter is not announced, so the goalie input is the probability-weighted quality of
+the likely starters (`goalies.py`). Starter model out of sample 2023-26: most likely candidate starts 67.5%;
+97.7% of starters were among the candidates (the rest: call-ups, new signings).
+
+Ceiling first (actual starter from the box score, look-ahead): moneyline log loss 0.6693 -> 0.6686; early
+line moved our way 74.9% -> 78.2%; game-day (morning) line 52.2% -> 58.0%.
+
+| Moneyline model | Log loss | Early >= 5% | Morning >= 5% |
+|---|---|---|---|
+| No goalie | 0.6693 | 869, +2.27, 74.9% | 1208, +0.26, 52.2% |
+| **Expected starter** | **0.6688** | **840, +2.38, 76.0%** | 1149, +0.32, 52.9% |
+| Actual starter (ceiling) | 0.6686 | 886, +2.49, 78.2% | 1148, +0.51, 58.0% |
+
+By season, early line, expected vs none: 2023-24 79.6% -> 81.9%, 2024-25 70.6% -> 70.0%, 2025-26 73.0% -> 74.7%.
+
+Goal model (opponent's expected goalie in each side's rate):
+
+| | Totals log loss | Puck line log loss | Puck line early >= 5% |
+|---|---|---|---|
+| No goalie | 0.6921 | 0.6570 | 154, +0.53, 57.1% |
+| Expected starter, goalie in totals too | 0.6927 | 0.6562 | 145, +0.75, 60.7% |
+| **Expected starter, total held** | **0.6921** | **0.6563** | **145, +0.76, 60.7%** |
+
+Even the actual starter made totals slightly worse, so the goalie only shifts goals between the teams: the
+lambdas are rescaled to the no-goalie model's total. Totals early line: 239 bets either way (75.3% -> 74.5%, noise).
+
+Game-day picks need the confirmed starter (the ceiling row): that requires a starter feed, not built yet.
