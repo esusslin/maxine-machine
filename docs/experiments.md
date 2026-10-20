@@ -71,3 +71,38 @@ Even the actual starter made totals slightly worse, so the goalie only shifts go
 lambdas are rescaled to the no-goalie model's total. Totals early line: 239 bets either way (75.3% -> 74.5%, noise).
 
 Game-day picks need the confirmed starter (the ceiling row): that requires a starter feed, not built yet.
+
+## 4. Pinnacle as a sharp anchor (moneyline) — rejected
+
+Pinnacle's 2-way moneyline is already in the EU feed (no new credits). 2023-26, same games:
+
+| Bet time | Pinnacle has a line | Log loss US median | Log loss Pinnacle | Model |
+|---|---|---|---|---|
+| Early (~33 h) | 10% of games | 0.6768 | 0.6773 | 0.6699 |
+| Morning | 100% | 0.6661 | 0.6661 | 0.6688 |
+| Close | 100% | 0.6651 | 0.6651 | 0.6688 |
+
+Pinnacle is not posted yet when we bet (early line), and once posted it is no sharper than the US median.
+Blending the model with Pinnacle, or betting US prices that beat Pinnacle's no-vig line (no model), never
+cleared +0.3% closing EV on a sample over 100 bets. Not worth the extra credits for Pinnacle totals/puck lines.
+
+## 5. Confirmed starting goalie on game day — rejected (feed not built)
+
+Proxy for a confirmed-starter feed: the actual starter from the box score. Strict measure: price taken (best
+US book) vs the fair no-vig closing price (Pinnacle close; US median when missing).
+
+| Bet time | Goalie input | Edge >= 5%: bets | Moved our way | Closing EV | Beat fair close |
+|---|---|---|---|---|---|
+| Morning | expected | 1152 | 56.7% | -1.16% | 37.2% |
+| Morning | confirmed | 1148 | 60.6% | -0.78% | 40.7% |
+| ~75 min before | expected | 741 | 48.2% | -1.58% | 18.8% |
+| ~75 min before | confirmed | 715 | 51.2% | -1.48% | 21.0% |
+
+Knowing the starter helps, but the market prices the starter as fast as it is announced, so game-day bets
+still lose to the close. Game-day stays unproven; no starter feed.
+
+## Benchmark: early-line moneyline picks on the strict measure
+
+Edge >= 5% vs US median, bet at best US price, 2023-26 clean games: 840 bets, line moved our way 74.9%,
+closing EV +1.09% vs the fair closing price, beat it 56.9%, ROI +4.4%. By season closing EV +1.29% / +0.98% /
++0.94% (all positive). Edge >= 7%: 433 bets, closing EV +2.09%, beat fair close 63.5%.
