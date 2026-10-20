@@ -312,6 +312,13 @@ def model(user: dict = Depends(auth.current_user)) -> dict:
     return json.loads(SCORECARD.read_text())
 
 
+@app.get("/api/algorithm")
+def algorithm(user: dict = Depends(auth.current_user)) -> dict:
+    from maxine.picks import VALIDATED
+    return {"min_edges": settings.MIN_EDGES, "game_day_picks": settings.GAME_DAY_PICKS,
+            "reg3_feed": settings.REG3_FEED, "validated": sorted(f"{m}|{lt}" for m, lt in VALIDATED)}
+
+
 @app.get("/api/admin/status")
 def admin_status(admin: dict = Depends(auth.current_admin)) -> dict:
     from maxine.warehouse.db import connect

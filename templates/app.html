@@ -268,12 +268,64 @@
   </div>
 
   <!-- ============ model ============ -->
-  <div x-show="tab==='model'" class="px-4 space-y-3 text-[13px]">
+  <div x-show="tab==='model'" class="px-4 space-y-3 text-[13px] leading-relaxed">
+    <div class="card p-4">
+      <p class="text-sm mb-1">How picks are made</p>
+      <p class="text-[12px] text-slate-400">Every pick runs the same eight steps, at 9:30 and 18:30 Pacific, or from Admin → Run picks.</p>
+    </div>
+
+    <div class="card p-4 space-y-2">
+      <p class="text-slate-200">1 · Data</p>
+      <p class="text-slate-400">Every NHL regular-season game since 2021-22 from the NHL's own API: score, how it ended (regulation, OT, shootout), goalies, and every shot with its location. Refreshed before each run.</p>
+
+      <p class="text-slate-200 pt-1">2 · Expected goals (xG) for every shot</p>
+      <p class="text-slate-400">The chance an unblocked shot becomes a goal, from distance and angle to the net, shot type, rebound (same team shot within 3 s), rush (other team had the puck within 4 s), skater advantage, third period and overtime. Logistic regression; each season scored by a model fit only on earlier seasons. Blocked shots, shootouts and empty-net shots excluded.</p>
+
+      <p class="text-slate-200 pt-1">3 · Team form before each game</p>
+      <p class="text-slate-400">Exponentially weighted averages with a 25-game half-life, carried across seasons (October leans on last year; Utah continues Arizona): xG for and against per game, goals for and against per game, 5-on-5 xG share. Rest: days since the last game (capped at 4) and a back-to-back flag for each team. Starting goalies are not used, because at bet time the starter is usually unknown.</p>
+
+      <p class="text-slate-200 pt-1">4a · Moneyline model (who wins, OT and shootout included)</p>
+      <p class="text-slate-400">Logistic regression on home-minus-away differences: xG differential, goal differential, 5v5 xG share, home back-to-back, away back-to-back, rest difference. The intercept is home ice. Then calibrated: p → sigmoid(a + b·logit p), fit on the model's own out-of-sample predictions, which pulls back overconfident calls.</p>
+      <template x-if="(model.backtest||{}).shot_model_coefs">
+        <p class="text-[12px] text-slate-500" x-text="'Current weights (standardized): '+Object.entries(model.backtest.shot_model_coefs[Object.keys(model.backtest.shot_model_coefs).sort().pop()]).map(([k,v])=>k+' '+v).join(' · ')"></p>
+      </template>
+
+      <p class="text-slate-200 pt-1">4b · Goal model (totals, puck line, regulation)</p>
+      <p class="text-slate-400">Each team's regulation goals ~ Poisson(λ), with λ from a Poisson regression on its own xG and goals for, the opponent's xG and goals against, home ice, back-to-backs and rest. From the two λs, a full score grid (0-12 goals each), then three corrections fit on past seasons:</p>
+      <ul class="list-disc pl-5 text-slate-400">
+        <li>Regulation ties are more common than independent goals predict: the tie cells are scaled up<span x-show="model.goal_model" x-text="' (×'+(model.goal_model||{}).tie_factor+')'"></span>.</li>
+        <li>Empty-net goals: a share of one-goal wins become two-goal wins because the trailing team pulls its goalie<span x-show="model.goal_model" x-text="' ('+pct((model.goal_model||{}).en_shift,0)+')'"></span>.</li>
+        <li>Overtime/shootout: who wins it leans toward the stronger team, P = logistic(a + b·log(λhome/λaway))<span x-show="model.goal_model" x-text="' (a '+(model.goal_model||{}).ot_intercept+', b '+(model.goal_model||{}).ot_slope+')'"></span>. Its winner is credited one goal, as books grade totals and puck lines.</li>
+      </ul>
+      <p class="text-slate-400">Totals and puck line probabilities are calibrated again per market on past results.</p>
+
+      <p class="text-slate-200 pt-1">5 · Market price</p>
+      <p class="text-slate-400">One live odds snapshot (US books: moneyline, totals, puck line; EU books: regulation 3-way with a Draw). Each book's margin is removed (p = (1/price) ÷ sum of 1/price over its outcomes), then the median across books is the market's probability. The line used is the one most books quote. The best price and its book are recorded.</p>
+
+      <p class="text-slate-200 pt-1">6 · Edge</p>
+      <p class="text-slate-400">For each market, the side the model likes more than the market does. Edge = model probability − market probability for that side (in regulation 3-way: the outcome with the largest positive gap).</p>
+
+      <p class="text-slate-200 pt-1">7 · What becomes a pick</p>
+      <ul class="list-disc pl-5 text-slate-400">
+        <li>Edge at least: <span x-text="'moneyline '+pct((algo.min_edges||{}).h2h,0)+', totals '+pct((algo.min_edges||{}).totals,0)+', puck line '+pct((algo.min_edges||{}).spreads,0)+', regulation '+pct((algo.min_edges||{}).reg3,0)"></span>.</li>
+        <li>Clean: neither team plays another game first, so the model has every result the bet depends on.</li>
+        <li>A line is posted and the game has not started.</li>
+        <li>Early line (a later date than today): the bet type the backtest supports. Game-day lines <span x-text="algo.game_day_picks ? 'are also picked, as experimental' : 'are shown but not picked'"></span>.</li>
+        <li>Backed by the backtest: <span x-text="(algo.validated||[]).map(k=>marketLabel(k.split('|')[0])+' ('+k.split('|')[1]+' line)').join(', ')"></span>. Everything else is experimental until its live record proves it (150+ bets beating the close 55%+ of the time).</li>
+      </ul>
+
+      <p class="text-slate-200 pt-1">8 · Tracking</p>
+      <p class="text-slate-400">The bet is the first price seen, 1 unit flat. About 15-30 minutes before puck drop the closing price is captured for the same market and line; beating it (CLV) is the early sign the edge is real. Graded at 3:30 the next morning: final score for moneyline, totals and puck line; regulation goals only for the 3-way.</p>
+
+      <p class="text-slate-200 pt-1">Not used yet</p>
+      <p class="text-slate-400">Starting goalies, injuries and lineups, special teams, travel distance, BetNHL picks, minor leagues.</p>
+    </div>
+
     <p class="card p-4 text-slate-500" x-show="model.missing">No scorecard yet. Run <span class="font-mono">maxine scorecard</span> locally and commit reports/scorecard.json.</p>
     <template x-if="model.backtest">
       <div class="space-y-3">
         <div class="card p-4">
-          <p class="mb-2">Test seasons: log loss (lower is better)</p>
+          <p class="mb-2">Backtest: moneyline log loss, test seasons (lower is better)</p>
           <template x-for="(m,name) in model.backtest.test_overall" :key="name">
             <div class="flex justify-between text-[12px] py-0.5">
               <span class="text-slate-400" x-text="name"></span>
@@ -283,20 +335,9 @@
           <p class="text-[11px] text-slate-500 mt-2" x-text="'Generated '+model.generated"></p>
         </div>
         <div class="card p-4" x-show="model.markets">
-          <p class="mb-2">Every market, early line (2023-26)</p>
+          <p class="mb-2">Every market, early line (2023-26): does the price move our way?</p>
           <template x-for="row in ((model.markets||{}).bets||[]).filter(r=>r.bet_time==='early')">
             <p class="text-[12px] text-slate-400" x-text="marketLabel(row.market)+' ≥ '+pct(row.min_edge,0)+': '+row.bets+' bets · moved our way '+(row.clv_pos_pct==null?'—':pct(row.clv_pos_pct,0))+' · ROI '+pct(row.roi)"></p>
-          </template>
-        </div>
-        <div class="card p-4" x-show="model.clv">
-          <p class="mb-2">Edge ≥ 5%: does the line move our way?</p>
-          <template x-for="(res,when) in (model.clv||{})" :key="when">
-            <div class="text-[12px] py-1">
-              <p class="text-slate-300" x-text="when+' line'"></p>
-              <template x-for="row in res.all.filter(r=>r.min_edge===0.05)">
-                <p class="text-slate-400" x-text="row.bets+' bets · moved our way '+pct(row.clv_pos_pct,0)+' · avg CLV '+pct(row.avg_clv)+' · ROI '+pct(row.roi_bet_price)"></p>
-              </template>
-            </div>
           </template>
         </div>
       </div>
@@ -362,7 +403,7 @@ function algo(){return{
   inviteCode:'', inviteValid:false, inviteReason:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
-  board:{records:[]}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, betnhl:[], model:{}, status:{}, invites:[], jobMsg:'',
+  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, betnhl:[], model:{}, status:{}, invites:[], jobMsg:'',
 
   tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'betnhl',label:'BetNHL'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
@@ -448,7 +489,7 @@ function algo(){return{
     if(this.tab==='board') this.board=await this.get('/api/board');
     if(this.tab==='picks'){ const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{}; this.paperByMarket=d.by_market||{} }
     if(this.tab==='betnhl') this.betnhl=(await this.get('/api/betnhl')).picks||[];
-    if(this.tab==='model') this.model=await this.get('/api/model');
+    if(this.tab==='model'){ this.model=await this.get('/api/model'); this.algo=await this.get('/api/algorithm') }
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }
     this.fresh=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   },

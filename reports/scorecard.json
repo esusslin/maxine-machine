@@ -483,8 +483,8 @@
   "markets": {
     "built": {
       "line_markets": {
-        "spreads": 55408,
-        "totals": 81448
+        "totals": 81448,
+        "spreads": 55408
       },
       "reg3_snapshots": 55657
     },
@@ -507,11 +507,11 @@
       },
       {
         "market": "totals",
-        "n": 3732,
-        "model": 0.6927,
-        "market_morning": 0.6919,
-        "model_same_games_as_close": 0.6927,
-        "market_close": 0.6914
+        "n": 3730,
+        "model": 0.6929,
+        "market_morning": 0.692,
+        "model_same_games_as_close": 0.6929,
+        "market_close": 0.6915
       }
     ],
     "bets": [
@@ -631,28 +631,28 @@
         "market": "spreads",
         "bet_time": "early",
         "min_edge": 0.03,
-        "bets": 338,
+        "bets": 337,
         "avg_clv": 0.0052,
-        "clv_pos_pct": 0.58,
-        "roi": -0.0297,
+        "clv_pos_pct": 0.581,
+        "roi": -0.0283,
         "seasons_roi": {
           "20232024": -0.097,
-          "20242025": 0.306,
-          "20252026": -0.116
+          "20242025": 0.325,
+          "20252026": -0.119
         }
       },
       {
         "market": "spreads",
         "bet_time": "early",
         "min_edge": 0.05,
-        "bets": 137,
-        "avg_clv": 0.0052,
-        "clv_pos_pct": 0.562,
-        "roi": 0.0872,
+        "bets": 138,
+        "avg_clv": 0.0048,
+        "clv_pos_pct": 0.558,
+        "roi": 0.0923,
         "seasons_roi": {
           "20232024": 0.096,
-          "20242025": 0.197,
-          "20252026": 0.061
+          "20242025": 0.264,
+          "20252026": 0.057
         }
       },
       {
@@ -687,27 +687,27 @@
         "market": "totals",
         "bet_time": "early",
         "min_edge": 0.03,
-        "bets": 277,
-        "avg_clv": 0.0132,
-        "clv_pos_pct": 0.668,
-        "roi": 0.0672,
+        "bets": 249,
+        "avg_clv": 0.0142,
+        "clv_pos_pct": 0.686,
+        "roi": 0.0691,
         "seasons_roi": {
-          "20232024": 0.11,
-          "20242025": -0.039,
-          "20252026": 0.134
+          "20232024": 0.101,
+          "20242025": -0.06,
+          "20252026": 0.138
         }
       },
       {
         "market": "totals",
         "bet_time": "early",
         "min_edge": 0.05,
-        "bets": 99,
-        "avg_clv": 0.0259,
-        "clv_pos_pct": 0.791,
-        "roi": 0.0163,
+        "bets": 86,
+        "avg_clv": 0.0269,
+        "clv_pos_pct": 0.787,
+        "roi": 0.0228,
         "seasons_roi": {
-          "20232024": 0.07,
-          "20242025": -0.205,
+          "20232024": 0.055,
+          "20242025": -0.262,
           "20252026": 0.405
         }
       },
@@ -715,30 +715,47 @@
         "market": "totals",
         "bet_time": "morning",
         "min_edge": 0.03,
-        "bets": 1344,
-        "avg_clv": 0.0013,
-        "clv_pos_pct": 0.481,
-        "roi": -0.0068,
+        "bets": 1219,
+        "avg_clv": 0.0018,
+        "clv_pos_pct": 0.484,
+        "roi": -0.0149,
         "seasons_roi": {
-          "20232024": -0.024,
-          "20242025": 0.044,
-          "20252026": -0.116
+          "20232024": -0.025,
+          "20242025": 0.026,
+          "20252026": -0.094
         }
       },
       {
         "market": "totals",
         "bet_time": "morning",
         "min_edge": 0.05,
-        "bets": 379,
-        "avg_clv": 0.0022,
-        "clv_pos_pct": 0.504,
-        "roi": -0.0104,
+        "bets": 318,
+        "avg_clv": 0.0027,
+        "clv_pos_pct": 0.513,
+        "roi": -0.0575,
         "seasons_roi": {
-          "20232024": -0.047,
-          "20242025": -0.028,
-          "20252026": 0.46
+          "20232024": -0.058,
+          "20242025": -0.252,
+          "20252026": 0.507
         }
       }
     ]
+  },
+  "goal_model": {
+    "season_fit_for": 20262027,
+    "tie_factor": 1.374,
+    "en_shift": 0.358,
+    "ot_intercept": 0.042,
+    "ot_slope": 0.808,
+    "calibration": {
+      "totals": [
+        -0.037,
+        0.673
+      ],
+      "spreads": [
+        -0.013,
+        1.058
+      ]
+    }
   }
 }
