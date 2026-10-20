@@ -31,7 +31,7 @@ PICK_FEATURES = [f for f in features.FEATURES if f != features.ACTUAL_GOALIE]
 CURRENT_SEASON = 20262027
 PACIFIC = ZoneInfo("America/Los_Angeles")
 MARKETS = ("h2h", "totals", "spreads", "reg3")
-DEFAULT_MIN_EDGE = {"h2h": 0.05, "totals": 0.03, "spreads": 0.05, "reg3": 0.05}
+DEFAULT_MIN_EDGE = {"h2h": 0.05, "totals": 0.05, "spreads": 0.07, "reg3": 0.05}   # docs/experiments.md: strict CLV
 VALIDATED = {("h2h", "early"), ("totals", "early"), ("reg3", "early")}
 MARKET_LABEL = {"h2h": "Moneyline", "totals": "Total", "spreads": "Puck line", "reg3": "Regulation 3-way"}
 

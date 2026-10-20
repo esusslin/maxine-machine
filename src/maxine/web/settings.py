@@ -62,10 +62,10 @@ class Settings:
     ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "")
 
     ODDS_API_KEY: str = os.getenv("ODDS_API_KEY", "")
-    # minimum edge per market (backtested: moneyline 5%, totals 3%; spreads and reg3 unproven)
+    # minimum edge per market: the lowest edge whose early-line picks beat the fair closing price (docs/experiments.md)
     MIN_EDGE_H2H: float = _float("MIN_EDGE_H2H", _float("MIN_EDGE", 0.05))
-    MIN_EDGE_TOTALS: float = _float("MIN_EDGE_TOTALS", 0.03)
-    MIN_EDGE_SPREADS: float = _float("MIN_EDGE_SPREADS", 0.05)
+    MIN_EDGE_TOTALS: float = _float("MIN_EDGE_TOTALS", 0.05)
+    MIN_EDGE_SPREADS: float = _float("MIN_EDGE_SPREADS", 0.07)
     MIN_EDGE_REG3: float = _float("MIN_EDGE_REG3", 0.05)
     REG3_FEED: bool = _bool("REG3_FEED", True)
 

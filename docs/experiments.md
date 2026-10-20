@@ -106,3 +106,29 @@ still lose to the close. Game-day stays unproven; no starter feed.
 Edge >= 5% vs US median, bet at best US price, 2023-26 clean games: 840 bets, line moved our way 74.9%,
 closing EV +1.09% vs the fair closing price, beat it 56.9%, ROI +4.4%. By season closing EV +1.29% / +0.98% /
 +0.94% (all positive). Edge >= 7%: 433 bets, closing EV +2.09%, beat fair close 63.5%.
+
+## 6. Pick thresholds on the strict measure — totals 3% -> 5%, puck line 5% -> 7%
+
+Early line, 2023-26, best US price (reg3: EU books, shown at the MEDIAN price since the best EU price is not
+reachable from the US), closing EV vs the fair no-vig closing price:
+
+| Market | Edge | Bets | Moved our way | Closing EV | By season |
+|---|---|---|---|---|---|
+| Moneyline | 5% | 840 | 74.9% | +1.09% | +1.29 / +0.98 / +0.94 |
+| Moneyline | 7% | 433 | 78.1% | +2.09% | |
+| Totals | 3% (old) | 236 | 72.9% | -0.34% | -0.8 / -0.7 / +0.3 |
+| Totals | **5%** | 89 | 78.7% | +1.07% | +0.9 / +0.7 / +2.4 |
+| Puck line | 5% (old) | 144 | 59.7% | -0.69% | |
+| Puck line | **7%** | 51 | 72.5% | +0.61% | still unproven (51 bets) |
+| Regulation 3-way | 5% (median price) | 645 | 81.1% | +2.59% | +3.6 / +3.5 / +0.8 |
+
+Moneyline stays at 5% (positive every season; 7% doubles the value per bet but halves the count).
+
+## 7. Special teams and travel — rejected
+
+Moneyline model, out of sample 2023-26 (log loss / early-line strict closing EV at 5%):
+current 0.6688 / +1.09%; + special-teams net xG (PP xGF - PK xGA, EWMA) 0.6689 / +1.08%;
++ travel km 0.6688 / +1.02%; + time-zone shift 0.6689 / +1.01%; + away team's zones from home 0.6687 / +0.96%;
+all together 0.6688 / +0.67%. Goal model: special teams made totals worse (0.6922 -> 0.6925, closing EV
++0.62% -> +0.25%); travel was neutral to worse. Special teams are already inside all-situation xG, and the
+market already prices travel. Code removed.
