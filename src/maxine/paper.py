@@ -1,6 +1,8 @@
 """Paper trading for every market: store picks, capture the closing price, grade.
 
-One bet per game per market; the first price seen is the bet (best price at that moment), 1 unit flat.
+One bet per game per exposure (moneyline, puck line and regulation on the same team count as one; see
+picks.exposure); the first price seen is the bet (best price at that moment). Stake = edge / min edge,
+capped at 2 units (bets logged before stakes existed are 1 unit).
 Close = the last live snapshot within CLOSE_WINDOW_MIN of puck drop, same market AND same line.
 CLV = no-vig probability of our side at close minus when we bet.
 Settlement:
@@ -16,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 
 from maxine import live_markets
+from maxine.picks import exposure
 from maxine.ingest import odds
 from maxine.web.appdb import db, insert_rows, query, utcnow
 
@@ -26,14 +29,21 @@ MARKETS = ("h2h", "totals", "spreads", "reg3")
 def store_picks(picks: pd.DataFrame) -> int:
     if picks is None or picks.empty:
         return 0
+    open_exposure = {(r["game_id"], exposure(r["market"], r["side"]))
+                     for r in query("SELECT game_id, market, side FROM paper_bets WHERE result IS NULL")}
     rows = []
     for p in picks.to_dict("records"):
+        side = p.get("side") or ("a" if p.get("selection") == p["home"] else "b")
+        key = (int(p["game_id"]), exposure(p.get("market", "h2h"), side))
+        if key in open_exposure:        # an earlier run already bet this game on this exposure
+            continue
+        open_exposure.add(key)
         rows.append({
             "created_at": utcnow(), "game_id": int(p["game_id"]), "market": p.get("market", "h2h"),
             "line_type": p.get("line_type", "early"), "validated": int(bool(p.get("validated", True))),
             "game_date": str(p["game_date"]), "start_utc": pd.Timestamp(p["start_utc"]).isoformat(),
             "home": p["home"], "away": p["away"],
-            "side": p.get("side") or ("a" if p.get("selection") == p["home"] else "b"),
+            "side": side, "stake": float(p.get("stake") or 1.0),
             "selection": p.get("selection") or p.get("pick_team"), "line": float(p.get("line") or 0.0),
             "p_model": float(p["p_model"]), "p_market": float(p["p_market"]), "edge": float(p["edge"]),
             "best_price": float(p["best_price"]), "best_book": p["best_book"],
@@ -133,7 +143,8 @@ def grade(con) -> int:
                 continue
             hs, as_, h_reg, a_reg = finals[b["game_id"]]
             res = settle(b, hs, as_, int(h_reg or 0), int(a_reg or 0))
-            profit = 0.0 if res == "P" else ((b["best_price"] - 1) if res == "W" else -1.0)
+            st = b.get("stake") or 1.0
+            profit = 0.0 if res == "P" else (st * (b["best_price"] - 1) if res == "W" else -st)
             conn.execute("UPDATE paper_bets SET result=?, profit=?, graded_at=? WHERE id=?",
                          (res, profit, utcnow(), b["id"]))
             graded += 1
@@ -145,9 +156,10 @@ def _record(rows: list[dict]) -> dict:
     decided = [r for r in settled if r["result"] != "P"]
     with_clv = [r for r in rows if r["clv"] is not None]
     units = sum(r["profit"] for r in settled)
-    return {"bets": len(settled), "wins": sum(r["result"] == "W" for r in decided),
+    staked = sum((r.get("stake") or 1.0) for r in settled)
+    return {"bets": len(settled), "staked": round(staked, 1), "wins": sum(r["result"] == "W" for r in decided),
             "losses": sum(r["result"] == "L" for r in decided), "pushes": len(settled) - len(decided),
-            "units": round(units, 2), "roi": round(units / len(settled), 4) if settled else None,
+            "units": round(units, 2), "roi": round(units / staked, 4) if settled else None,
             "avg_clv": round(sum(r["clv"] for r in with_clv) / len(with_clv), 4) if with_clv else None,
             "beat_close_pct": round(sum(r["clv"] > 0 for r in with_clv) / len(with_clv), 3) if with_clv else None,
             "open": len(rows) - len(settled)}

@@ -132,3 +132,35 @@ current 0.6688 / +1.09%; + special-teams net xG (PP xGF - PK xGA, EWMA) 0.6689 /
 all together 0.6688 / +0.67%. Goal model: special teams made totals worse (0.6922 -> 0.6925, closing EV
 +0.62% -> +0.25%); travel was neutral to worse. Special teams are already inside all-situation xG, and the
 market already prices travel. Code removed.
+
+## 8. Anchor the goal model to the moneyline model — rejected
+
+Shift each game's goal split (lam_h : lam_a, total unchanged) until the goal model's moneyline equals the
+moneyline model's probability (weight 1), or the logit average of the two (weight 0.5). Early line, strict
+closing EV at the MEDIAN price for every market (so the puck line reads lower than in section 6, which used
+the best US price):
+
+| Anchor weight | Goal-model ML log loss | Puck line log loss | Puck line 7%: bets, EV | Reg 3-way 5%: bets, EV |
+|---|---|---|---|---|
+| 0 (current) | 0.6687 | 0.6563 | 51, -1.27% | 645, +2.59% |
+| 0.5 | 0.6691 | 0.6566 | 66, -1.87% | 664, +2.22% |
+| 1 | 0.6702 | 0.6575 | 103, -2.38% | 783, +1.51% |
+
+With the expected goalie added, the goal model already predicts winners as well as the moneyline model
+(0.6687 vs 0.6688), so there is nothing to borrow; anchoring only imports the other model's errors.
+The puck line's weakness is not the win probability; it stays unproven.
+
+## 9. Staking — adopted: one bet per game per team, stake = edge / min edge (cap 2u)
+
+Early-line picks 2023-26 at the section-6 thresholds (1,626 picks; 431 games had 2-3 picks on the same team).
+Closing EV per unit staked vs the fair closing price; ROI is about +6% for every scheme (noise).
+
+| Staking | Bets | Staked | Profit | Closing EV / unit | Worst drawdown |
+|---|---|---|---|---|---|
+| Flat 1u, every pick | 1626 | 1626 | +97u | +1.33% | 33u |
+| Flat 1u, best edge per game+team | 1171 | 1171 | +65u | +1.59% | 24u |
+| Quarter Kelly cap 3u, best per game+team | 1171 | 2635 | +156u | +1.94% | 65u |
+| **Edge / min edge cap 2u, best per game+team** | 1171 | 1709 | +100u | **+1.98%** | 41u |
+
+Moneyline, puck line and regulation on the same team are one exposure; totals and the regulation tie are
+separate. Live, a later run never adds a second bet on an exposure already bet for that game.

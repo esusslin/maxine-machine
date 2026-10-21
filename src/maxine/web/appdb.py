@@ -204,6 +204,10 @@ MIGRATIONS: list[tuple[int, str]] = [
         profit, graded_at
     FROM paper_picks;
     """),
+    (4, """
+    -- stake in units (edge / min edge, capped at 2); bets before this were 1 unit flat
+    ALTER TABLE paper_bets ADD COLUMN stake REAL DEFAULT 1.0;
+    """),
 ]
 
 

@@ -36,3 +36,25 @@ def test_goalie_candidates_back_to_back():
     assert set(rows) == {1, 2}
     assert rows[1]["b2b"] == 1 and rows[1]["b2b_started_last"] == 1 and rows[2]["b2b_started_last"] == 0
     assert rows[1]["share5"] == 0.8 and rows[2]["days_since"] == 5
+
+
+def test_exposure_and_stake():
+    from maxine.picks import exposure, stake
+    assert exposure("h2h", "a") == exposure("spreads", "a") == exposure("reg3", "home") == "home"
+    assert exposure("totals", "a") == exposure("totals", "b") == "total"
+    assert exposure("reg3", "draw") == "draw"
+    assert stake(0.05, 0.05) == 1.0 and stake(0.08, 0.05) == 1.6 and stake(0.30, 0.05) == 2.0
+
+
+def test_select_bets_one_per_exposure():
+    import pandas as pd
+    from maxine.picks import select_bets
+    b = pd.DataFrame([  # the TOR @ CBJ board: CBJ moneyline, CBJ -1.5, CBJ in regulation, under (no pick)
+        {"game_id": 1, "market": "h2h", "side": "a", "edge": 0.089, "min_edge": 0.05, "is_pick": True},
+        {"game_id": 1, "market": "spreads", "side": "a", "edge": 0.074, "min_edge": 0.07, "is_pick": True},
+        {"game_id": 1, "market": "reg3", "side": "home", "edge": 0.090, "min_edge": 0.05, "is_pick": True},
+        {"game_id": 1, "market": "totals", "side": "b", "edge": 0.001, "min_edge": 0.05, "is_pick": False},
+    ])
+    out = select_bets(b).set_index("market")
+    assert out["is_pick"].tolist() == [False, False, True, False]
+    assert out.loc["h2h", "covered_by"] == "reg3" and out.loc["reg3", "stake"] == 1.8

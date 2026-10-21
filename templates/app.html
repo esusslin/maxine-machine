@@ -182,7 +182,9 @@
               <p class="text-[12px]"><span class="text-slate-500" x-text="marketLabel(r.market)+' · '"></span><span x-text="r.selection || 'no line yet'"></span></p>
               <span x-show="r.is_pick" class="text-[10px] px-2 py-0.5 rounded"
                     :class="r.validated ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900/60 text-amber-300'"
-                    x-text="r.validated ? 'PICK' : 'PICK · unproven'"></span>
+                    x-text="(r.validated ? 'PICK' : 'PICK · unproven')+(r.stake?' · bet '+r.stake+'u':'')"></span>
+              <span x-show="!r.is_pick && r.covered_by" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400"
+                    x-text="'same bet as the '+marketLabel(r.covered_by).toLowerCase()+' pick'"></span>
             </div>
             <p x-show="r.p_market!==null" class="text-[11px] text-slate-400"
                x-text="'model '+pct(r.p_model)+' · market '+pct(r.p_market)+' · edge '+(r.edge>=0?'+':'')+pct(r.edge)+' · best '+dec(r.best_price)+' ('+american(r.best_price)+') '+bookName(r.best_book)"></p>
@@ -216,7 +218,7 @@
               <div>
                 <p class="text-sm" x-text="betSentence(b)"></p>
                 <p class="text-[11px] text-slate-500"
-                   x-text="american(b.best_price)+' ('+dec(b.best_price)+') at '+bookName(b.best_book)+' · model '+pct(b.p_model,0)+' vs market '+pct(b.p_market,0)+(b.clv==null?'':' · closed at '+american(b.close_price)+(b.clv>0?' ✓ beat the close':' ✗ did not beat the close'))"></p>
+                   x-text="'Bet '+(b.stake||1)+'u · '+american(b.best_price)+' ('+dec(b.best_price)+') at '+bookName(b.best_book)+' · model '+pct(b.p_model,0)+' vs market '+pct(b.p_market,0)+(b.clv==null?'':' · closed at '+american(b.close_price)+(b.clv>0?' ✓ beat the close':' ✗ did not beat the close'))"></p>
               </div>
               <span class="text-[10px] px-2 py-0.5 rounded whitespace-nowrap"
                     :class="b.validated && b.line_type==='early' ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900/60 text-amber-300'"
@@ -318,8 +320,11 @@
         <li>Backed by the backtest: <span x-text="(algo.validated||[]).map(k=>marketLabel(k.split('|')[0])+' ('+k.split('|')[1]+' line)').join(', ')"></span>. Everything else is experimental until its live record proves it (150+ bets beating the close 55%+ of the time).</li>
       </ul>
 
+      <p class="text-slate-200 pt-1">7b · One bet per game per team, sized by edge</p>
+      <p class="text-slate-400">Moneyline, puck line and regulation on the same team win or lose together, so only the one with the largest edge is bet; the others show "same bet as". Totals and the regulation tie are separate. Stake = edge ÷ that market's minimum edge, capped at 2 units: a pick right at the minimum is 1 unit, one with 1.5× the minimum edge is 1.5 units. Backtest 2023-26: value vs the fair closing price +1.3% → +2.0% per unit, worst losing stretch 33 → 41 units on 1,709 staked instead of 1,626.</p>
+
       <p class="text-slate-200 pt-1">8 · Tracking</p>
-      <p class="text-slate-400">The bet is the first price seen, 1 unit flat. About 15-30 minutes before puck drop the closing price is captured for the same market and line; beating it (CLV) is the early sign the edge is real. Graded at 3:30 the next morning: final score for moneyline, totals and puck line; regulation goals only for the 3-way.</p>
+      <p class="text-slate-400">The bet is the first price seen. About 15-30 minutes before puck drop the closing price is captured for the same market and line; beating it (CLV) is the early sign the edge is real. Graded at 3:30 the next morning: final score for moneyline, totals and puck line; regulation goals only for the 3-way.</p>
 
       <p class="text-slate-200 pt-1">Not used yet</p>
       <p class="text-slate-400">Confirmed starting goalies (game day), injuries and lineups, special teams, travel distance, BetNHL picks, minor leagues.</p>
@@ -428,7 +433,7 @@ function algo(){return{
     ];
     if(this.tab==='picks') return [
       {term:'CLV',def:'Closing line value: the no-margin probability of our side just before puck drop minus when we bet. Positive means the market moved our way, the best early sign of a real edge.'},
-      {term:'units',def:'Profit at 1 unit flat per pick at the best price logged.'},
+      {term:'units',def:'Profit in units at the best price logged. Each pick stakes its edge divided by the minimum edge for that market, capped at 2 units (a pick right at the minimum is 1 unit). Picks before Oct 21, 2026 were 1 unit flat.'},
     ];
     return [];
   },

@@ -31,6 +31,37 @@ PICK_FEATURES = [f for f in features.FEATURES if f != features.ACTUAL_GOALIE]
 CURRENT_SEASON = 20262027
 PACIFIC = ZoneInfo("America/Los_Angeles")
 MARKETS = ("h2h", "totals", "spreads", "reg3")
+MAX_STAKE = 2.0   # units; stake = edge / min edge, capped (docs/experiments.md section 9)
+
+
+def exposure(market: str, side: str) -> str:
+    """Bets on the same exposure win or lose together: moneyline, puck line and regulation on the same team.
+    Totals and the regulation draw are their own groups."""
+    if market == "totals":
+        return "total"
+    if market == "reg3":
+        return side                         # home / away / draw
+    return "home" if side == "a" else "away"
+
+
+def stake(edge: float, min_edge: float) -> float:
+    return round(min(MAX_STAKE, edge / min_edge), 1)
+
+
+def select_bets(board: pd.DataFrame) -> pd.DataFrame:
+    """One bet per game per exposure: keep the largest edge, mark the others as covered by it; size stakes."""
+    board = board.copy()
+    board["exposure"] = [exposure(m, s) if isinstance(s, str) else None for m, s in zip(board["market"], board["side"])]
+    board["covered_by"] = None
+    for _, grp in board[board["is_pick"]].groupby(["game_id", "exposure"]):
+        best = grp["edge"].idxmax()
+        for i in grp.index.drop(best):
+            board.loc[i, "is_pick"] = False
+            board.loc[i, "covered_by"] = board.loc[best, "market"]
+    board["stake"] = [stake(e, m) if p else None for e, m, p in zip(board["edge"], board["min_edge"], board["is_pick"])]
+    return board
+
+
 DEFAULT_MIN_EDGE = {"h2h": 0.05, "totals": 0.05, "spreads": 0.07, "reg3": 0.05}   # docs/experiments.md: strict CLV
 VALIDATED = {("h2h", "early"), ("totals", "early"), ("reg3", "early")}
 MARKET_LABEL = {"h2h": "Moneyline", "totals": "Total", "spreads": "Puck line", "reg3": "Regulation 3-way"}
@@ -184,6 +215,7 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
     board["validated"] = [(m, lt) in VALIDATED for m, lt in zip(board["market"], board["line_type"])]
     board["is_pick"] = (board["clean"] & (board["early"] | game_day) & board["p_market"].notna()
                         & (board["edge"].fillna(-1) >= board["min_edge"]))
+    board = select_bets(board)
     picks = board[board["is_pick"]].copy()
     picks["logged_at"] = snap["path"].rsplit("/", 1)[-1].removesuffix(".json")
     if not picks.empty:

@@ -41,25 +41,27 @@ def _bet(game_id, market, side, selection, line, price=2.0, line_type="early"):
 def test_paper_store_dedupe_and_grade_all_markets():
     server.run_migrations()
     bets = pd.DataFrame([
-        _bet(99, "h2h", "b", "ANA", 0.0, 2.25),            # away wins -> W
+        {**_bet(99, "h2h", "b", "ANA", 0.0, 2.25), "stake": 1.5},   # away wins -> W, 1.5 units
         _bet(99, "totals", "a", "Over 5.5", 5.5),          # 3+2 = 5 -> L
-        _bet(99, "spreads", "b", "ANA +1.5", -1.5),        # home line -1.5, away covers -> W
+        _bet(97, "spreads", "b", "ANA +1.5", -1.5),        # home line -1.5, away covers -> W
         _bet(99, "reg3", "draw", "Tie after regulation", 0.0, 4.2),   # reg 2-2 -> W
         _bet(98, "totals", "b", "Under 6", 6.0),           # 4+2 = 6 -> push
     ])
     assert paper.store_picks(bets) == 5
     assert paper.store_picks(bets) == 0              # first price seen is the bet; never overwritten
+    # same game, same team as the open ANA moneyline bet: covered by it, not stored
+    assert paper.store_picks(pd.DataFrame([_bet(99, "reg3", "away", "ANA in regulation", 0.0)])) == 0
     con = duckdb.connect()
     con.execute("CREATE TABLE games (game_id BIGINT, home_score INT, away_score INT, home_team_id INT, away_team_id INT)")
     con.execute("CREATE TABLE shots (game_id BIGINT, event_type VARCHAR, period INT, owner_team_id INT)")
-    con.execute("INSERT INTO games VALUES (99, 2, 3, 1, 2), (98, 4, 2, 1, 2)")
+    con.execute("INSERT INTO games VALUES (99, 2, 3, 1, 2), (98, 4, 2, 1, 2), (97, 2, 3, 1, 2)")
     con.executemany("INSERT INTO shots VALUES (?,?,?,?)", [(99, "goal", 1, 1), (99, "goal", 2, 1), (99, "goal", 2, 2),
                                                           (99, "goal", 3, 2), (99, "goal", 4, 2)])
     assert paper.grade(con) == 5
     res = {(r["game_id"], r["market"]): (r["result"], r["profit"]) for r in paper.summary()["picks"]}
-    assert res[(99, "h2h")] == ("W", 1.25)
+    assert res[(99, "h2h")] == ("W", 1.875)
     assert res[(99, "totals")] == ("L", -1.0)
-    assert res[(99, "spreads")][0] == "W"
+    assert res[(97, "spreads")][0] == "W"
     assert res[(99, "reg3")] == ("W", 3.2)
     assert res[(98, "totals")] == ("P", 0.0)
     by = paper.summary()["by_market"]
