@@ -150,7 +150,7 @@ With the expected goalie added, the goal model already predicts winners as well 
 (0.6687 vs 0.6688), so there is nothing to borrow; anchoring only imports the other model's errors.
 The puck line's weakness is not the win probability; it stays unproven.
 
-## 9. Staking — adopted: one bet per game per team, stake = edge / min edge (cap 2u)
+## 9. Staking — adopted: one pick per game per team (flat; stake sizing tested, not used by choice)
 
 Early-line picks 2023-26 at the section-6 thresholds (1,626 picks; 431 games had 2-3 picks on the same team).
 Closing EV per unit staked vs the fair closing price; ROI is about +6% for every scheme (noise).

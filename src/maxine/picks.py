@@ -31,9 +31,6 @@ PICK_FEATURES = [f for f in features.FEATURES if f != features.ACTUAL_GOALIE]
 CURRENT_SEASON = 20262027
 PACIFIC = ZoneInfo("America/Los_Angeles")
 MARKETS = ("h2h", "totals", "spreads", "reg3")
-MAX_STAKE = 2.0   # units; stake = edge / min edge, capped (docs/experiments.md section 9)
-
-
 def exposure(market: str, side: str) -> str:
     """Bets on the same exposure win or lose together: moneyline, puck line and regulation on the same team.
     Totals and the regulation draw are their own groups."""
@@ -44,12 +41,8 @@ def exposure(market: str, side: str) -> str:
     return "home" if side == "a" else "away"
 
 
-def stake(edge: float, min_edge: float) -> float:
-    return round(min(MAX_STAKE, edge / min_edge), 1)
-
-
 def select_bets(board: pd.DataFrame) -> pd.DataFrame:
-    """One bet per game per exposure: keep the largest edge, mark the others as covered by it; size stakes."""
+    """One pick per game per exposure: keep the largest edge, mark the others as covered by it."""
     board = board.copy()
     board["exposure"] = [exposure(m, s) if isinstance(s, str) else None for m, s in zip(board["market"], board["side"])]
     board["covered_by"] = None
@@ -58,7 +51,6 @@ def select_bets(board: pd.DataFrame) -> pd.DataFrame:
         for i in grp.index.drop(best):
             board.loc[i, "is_pick"] = False
             board.loc[i, "covered_by"] = board.loc[best, "market"]
-    board["stake"] = [stake(e, m) if p else None for e, m, p in zip(board["edge"], board["min_edge"], board["is_pick"])]
     return board
 
 

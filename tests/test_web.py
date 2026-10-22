@@ -41,7 +41,7 @@ def _bet(game_id, market, side, selection, line, price=2.0, line_type="early"):
 def test_paper_store_dedupe_and_grade_all_markets():
     server.run_migrations()
     bets = pd.DataFrame([
-        {**_bet(99, "h2h", "b", "ANA", 0.0, 2.25), "stake": 1.5},   # away wins -> W, 1.5 units
+        _bet(99, "h2h", "b", "ANA", 0.0, 2.25),            # away wins -> W
         _bet(99, "totals", "a", "Over 5.5", 5.5),          # 3+2 = 5 -> L
         _bet(97, "spreads", "b", "ANA +1.5", -1.5),        # home line -1.5, away covers -> W
         _bet(99, "reg3", "draw", "Tie after regulation", 0.0, 4.2),   # reg 2-2 -> W
@@ -59,7 +59,7 @@ def test_paper_store_dedupe_and_grade_all_markets():
                                                           (99, "goal", 3, 2), (99, "goal", 4, 2)])
     assert paper.grade(con) == 5
     res = {(r["game_id"], r["market"]): (r["result"], r["profit"]) for r in paper.summary()["picks"]}
-    assert res[(99, "h2h")] == ("W", 1.875)
+    assert res[(99, "h2h")] == ("W", 1.25)
     assert res[(99, "totals")] == ("L", -1.0)
     assert res[(97, "spreads")][0] == "W"
     assert res[(99, "reg3")] == ("W", 3.2)
