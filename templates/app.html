@@ -251,6 +251,29 @@
     </div>
   </div>
 
+  <!-- ============ parlays ============ -->
+  <div x-show="tab==='parlays'" class="px-4 space-y-2">
+    <p class="text-[11px] text-slate-500" x-show="parlays.updated_at" x-text="'Built '+ago(parlays.updated_at)+' with today\'s picks run'"></p>
+    <p class="text-sm text-slate-500 card p-4" x-show="!(parlays.parlays||[]).length">No parlays yet. Built with the 2:00 PM run, or Admin → Run full formula.</p>
+    <template x-for="pl in (parlays.parlays||[])" :key="pl.legs_n">
+      <div class="card p-3">
+        <div class="flex items-baseline justify-between">
+          <p class="text-sm font-semibold" x-text="pl.legs_n+'-leg parlay'"></p>
+          <p class="text-sm" x-text="american(pl.price)+(pl.mixed_books?' (best price per leg, mixed books)':' at '+bookName(pl.book))"></p>
+        </div>
+        <p class="text-[12px] text-slate-400 mb-2"
+           x-text="'Chance to hit: '+pct(pl.p_model)+' (about 1 in '+Math.round(1/pl.p_model)+') · market '+pct(pl.p_market)+' · $10 pays $'+(10*pl.price).toFixed(0)"></p>
+        <template x-for="l in pl.legs" :key="l.game_id">
+          <div class="py-1 border-t border-slate-800 flex justify-between gap-2">
+            <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home+' '+when(l.start_utc)"></span></p>
+            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="american(l.price)+' · '+pct(l.p_model,0)+' / '+pct(l.p_market,0)"></p>
+          </div>
+        </template>
+      </div>
+    </template>
+    <p class="text-[11px] text-slate-500 pt-1">How they're built: one leg per game (same-game legs move together), only legs the model rates at least as likely as the market, the most likely leg from each game, then the most likely games first. Chance to hit multiplies the legs. Price is the best single book that has every leg. Leg numbers: price · model / market.</p>
+  </div>
+
   <!-- ============ betnhl ============ -->
   <div x-show="tab==='betnhl'" class="px-4 space-y-2">
     <p class="text-[12px] text-slate-500">BetNHL free daily tips, captured at 10:00 PT. Extractor v0: check against the page before trusting.</p>
@@ -405,12 +428,12 @@ function algo(){return{
   inviteCode:'', inviteValid:false, inviteReason:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
-  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, betnhl:[], model:{}, status:{}, invites:[], jobMsg:'',
+  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, betnhl:[], model:{}, status:{}, invites:[], jobMsg:'',
 
-  tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'betnhl',label:'BetNHL'},{key:'model',label:'Model'}];
+  tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'parlays',label:'Parlays'},{key:'betnhl',label:'BetNHL'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
-  tabTitle(){ return {board:'Board',picks:'Paper picks',betnhl:'BetNHL',model:'Model',admin:'Admin'}[this.tab] },
-  subtitle(){ return {board:'Today\'s games, model vs market at 2 PM PT',picks:'Game-day picks, graded against the close',
+  tabTitle(){ return {board:'Board',picks:'Paper picks',parlays:'Parlays',betnhl:'BetNHL',model:'Model',admin:'Admin'}[this.tab] },
+  subtitle(){ return {board:'Today\'s games, model vs market at 2 PM PT',picks:'Game-day picks, graded against the close',parlays:'Best chance to hit, 3 to 8 legs',
     betnhl:'Their free daily tips',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
   glossary(){
     if(this.tab==='board') return [
@@ -488,6 +511,7 @@ function algo(){return{
     if(!this.profilePhone) this.profilePhone=this.user.phone||'';
     if(this.tab==='board') this.board=await this.get('/api/board');
     if(this.tab==='picks'){ const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{}; this.paperByMarket=d.by_market||{} }
+    if(this.tab==='parlays') this.parlays=await this.get('/api/parlays');
     if(this.tab==='betnhl') this.betnhl=(await this.get('/api/betnhl')).picks||[];
     if(this.tab==='model'){ this.model=await this.get('/api/model'); this.algo=await this.get('/api/algorithm') }
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }

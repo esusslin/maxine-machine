@@ -286,6 +286,14 @@ def board(user: dict = Depends(auth.current_user)) -> dict:
     return data
 
 
+@app.get("/api/parlays")
+def parlays_today(user: dict = Depends(auth.current_user)) -> dict:
+    row = get_kv("parlays")
+    data = json.loads(row["value"]) if row else {"parlays": []}
+    data["updated_at"] = row["updated_at"] if row else None
+    return data
+
+
 @app.get("/api/paper")
 def paper_history(user: dict = Depends(auth.current_user)) -> dict:
     from maxine import paper

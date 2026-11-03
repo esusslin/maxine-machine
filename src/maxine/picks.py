@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from maxine import features, goalies, live_markets
+from maxine import features, goalies, live_markets, parlays
 from maxine.config import DATA_DIR
 from maxine.ingest import nhl, odds
 from maxine.models import goals, winprob, xg
@@ -132,7 +132,8 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
     fx = fixtures(hours)
     if today_only and not fx.empty:
         fx = fx[fx["game_date"].astype(str) == datetime.now(PACIFIC).date().isoformat()]
-    empty = {"status": status, "board": pd.DataFrame(), "picks": pd.DataFrame(), "credits_remaining": None}
+    empty = {"status": status, "board": pd.DataFrame(), "picks": pd.DataFrame(), "credits_remaining": None,
+             "parlays": []}
     if fx.empty:
         return empty
     fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
@@ -162,7 +163,7 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
 
     likely = {(r.game_id, r.team): f"{r.likely_goalie} ({r.likely_p:.0%})" for r in gx.itertuples()}
     today_pt = datetime.now(PACIFIC).date()
-    rows = []
+    rows, leg_in = [], []
     for f in fx.itertuples():
         early = pd.to_datetime(f.game_date).date() > today_pt
         base = {"game_id": f.game_id, "game_date": f.game_date, "start_utc": f.start_utc, "home": f.home,
@@ -175,6 +176,8 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
         mk = mk_all[mk_all["market"] == "h2h"] if not mk_all.empty else mk_all
         if f.game_id in p_ml and len(mk):
             rows.append(_two_way_row(base, "h2h", mk.iloc[0], float(p_ml[f.game_id])))
+            leg_in.append({**base, "market": "h2h", "line": 0.0, "p_a": float(p_ml[f.game_id]),
+                           "p_mkt_a": float(mk.iloc[0].p_a)})
         elif f.game_id in p_ml:
             rows.append({**base, "market": "h2h", "selection": None, "p_model": float(p_ml[f.game_id]),
                          "p_market": None, "edge": None})
@@ -189,6 +192,7 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
             p_a = goals.apply_cal(a / (a + b), cal.get(market)) if (a + b) > 0 else None
             if p_a is not None:
                 rows.append(_two_way_row(base, market, m0, p_a))
+                leg_in.append({**base, "market": market, "line": float(m0.line), "p_a": p_a, "p_mkt_a": float(m0.p_a)})
         r = _match(r3, f)
         if len(r):
             r = r.iloc[0]
@@ -216,7 +220,8 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
         with open(log_dir / f"{date.today().isoformat()}.jsonl", "a") as fh:
             for rec in out.to_dict("records"):
                 fh.write(json.dumps(rec, default=str) + "\n")
-    return {"status": status, "credits_remaining": credits, "board": board, "picks": picks}
+    parlay_list = parlays.build(leg_in, live_markets.book_rows(snap["path"]))
+    return {"status": status, "credits_remaining": credits, "board": board, "picks": picks, "parlays": parlay_list}
 
 
 def print_report(r: dict) -> None:

@@ -92,6 +92,7 @@ def run_picks() -> dict:
                                           for row in board.to_dict("records")]
         set_kv("board", json.dumps({"records": records, "min_edges": settings.MIN_EDGES,
                                     "game_day_picks": settings.GAME_DAY_PICKS}))
+        set_kv("parlays", json.dumps({"parlays": r.get("parlays", [])}, default=_clean))
         if r.get("credits_remaining") is not None:
             set_kv("odds_credits_remaining", str(r["credits_remaining"]))
         stored = paper.store_picks(r["picks"]) if not r["picks"].empty else 0

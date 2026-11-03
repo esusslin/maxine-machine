@@ -23,6 +23,11 @@ def _events(path: str):
 def two_way(path: str) -> pd.DataFrame:
     """Rows: home, away, commence, market (h2h/spreads/totals), line, p_a, books, med_a, med_b,
     best_a, best_a_book, best_b, best_b_book. Side A = home / home covers / over."""
+    return _aggregate(book_rows(path), ["a", "b"])
+
+
+def book_rows(path: str) -> pd.DataFrame:
+    """One row per book per game-market-line: home, away, commence, market, line, book, a, b (decimal prices), p."""
     rows = []
     for ev, home, away, commence in _events(path):
         for b in ev.get("bookmakers", []):
@@ -46,7 +51,7 @@ def two_way(path: str) -> pd.DataFrame:
                 pa, pb = a["price"], bb["price"]
                 rows.append({"home": home, "away": away, "commence": commence, "market": key, "line": float(line),
                              "book": b["key"], "a": pa, "b": pb, "p": (1 / pa) / (1 / pa + 1 / pb)})
-    return _aggregate(pd.DataFrame(rows), ["a", "b"])
+    return pd.DataFrame(rows)
 
 
 def reg3(path: str) -> pd.DataFrame:

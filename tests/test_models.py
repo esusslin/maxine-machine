@@ -78,3 +78,27 @@ def test_goalie_candidates_missing_starter():
     assert sorted(c.loc[c["game_id"] == 2, "y"]) == [0, 0]
     g3 = c[c["game_id"] == 3].set_index("player_id")["y"].to_dict()
     assert g3 == {30: 1, 40: 0}
+
+
+def test_parlays_one_leg_per_game_and_book_pricing():
+    import pandas as pd
+    from maxine import parlays
+    t = pd.Timestamp("2026-11-04T00:00Z")
+    games = [("DAL", "WSH", 1), ("STL", "NYR", 2), ("COL", "CBJ", 3), ("EDM", "NJD", 4)]
+    inputs, books = [], []
+    for away, home, gid in games:
+        # model likes the away +1.5 more than the market does; moneyline has no edge either way
+        inputs.append({"game_id": gid, "home": home, "away": away, "start_utc": t, "market": "spreads",
+                       "line": -1.5, "p_a": 0.30, "p_mkt_a": 0.33})
+        inputs.append({"game_id": gid, "home": home, "away": away, "start_utc": t, "market": "h2h",
+                       "line": 0.0, "p_a": 0.55, "p_mkt_a": 0.55})
+        for book, b in (("dk", 1.40), ("fd", 1.45)):
+            books.append({"home": home, "away": away, "commence": t, "market": "spreads", "line": -1.5,
+                          "book": book, "a": 2.9, "b": b})
+    books[-1]["book"] = "other"            # fd misses the last game: only dk has all four legs
+    out = parlays.build(inputs, pd.DataFrame(books))
+    assert [p["legs_n"] for p in out] == [3, 4]
+    four = out[1]
+    assert all(l["selection"].endswith("+1.5") for l in four["legs"])
+    assert four["book"] == "dk" and abs(four["price"] - 1.40 ** 4) < 1e-9
+    assert abs(four["p_model"] - 0.70 ** 4) < 1e-9
