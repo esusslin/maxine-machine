@@ -167,22 +167,22 @@
   <!-- ============ board ============ -->
   <div x-show="tab==='board'" class="px-4 space-y-2">
     <p class="text-[11px] text-slate-500" x-show="board.updated_at"
-       x-text="'Priced '+ago(board.updated_at)+(board.game_day_picks?' · early and game-day lines':' · early line only')+' · min edge ML '+pct((board.min_edges||{}).h2h,0)+', total '+pct((board.min_edges||{}).totals,0)+', puck line '+pct((board.min_edges||{}).spreads,0)+', reg '+pct((board.min_edges||{}).reg3,0)"></p>
+       x-text="'Priced '+ago(board.updated_at)+' · today\'s games, built at 2:00 PM PT · min edge ML '+pct((board.min_edges||{}).h2h,0)+', total '+pct((board.min_edges||{}).totals,0)+', puck line '+pct((board.min_edges||{}).spreads,0)+', reg '+pct((board.min_edges||{}).reg3,0)"></p>
     <p class="text-sm text-slate-500 card p-4" x-show="!(board.records||[]).length">
-      No board yet. Built at 9:30 and 18:30 PT, or from Admin → Run picks.
+      No board yet. Built at 2:00 PM PT on game days, or from Admin → Run full formula.
     </p>
     <template x-for="g in boardGames()" :key="g.game_id">
       <div class="card p-3" :class="g.rows.some(r=>r.is_pick) ? 'tierA' : 'tierC'">
         <p class="text-sm"><span x-text="g.away"></span> @ <span x-text="g.home"></span></p>
-        <p class="text-[11px] text-slate-500" x-text="when(g.start_utc)+' · '+(g.early?'early line':'game-day line')+(g.clean?'':' · a team plays before this, no picks')"></p>
+        <p class="text-[11px] text-slate-500" x-text="when(g.start_utc)+(g.clean?'':' · a team plays before this, no picks')"></p>
         <p class="text-[11px] text-slate-500 mb-2" x-show="g.home_goalie||g.away_goalie" x-text="'Likely goalies: '+(g.away_goalie||'?')+' vs '+(g.home_goalie||'?')"></p>
         <template x-for="r in g.rows" :key="r.market">
           <div class="py-1.5 border-t border-slate-800">
             <div class="flex items-center justify-between">
               <p class="text-[12px]"><span class="text-slate-500" x-text="marketLabel(r.market)+' · '"></span><span x-text="r.selection || 'no line yet'"></span></p>
               <span x-show="r.is_pick" class="text-[10px] px-2 py-0.5 rounded"
-                    :class="r.validated ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900/60 text-amber-300'"
-                    x-text="r.validated ? 'PICK' : 'PICK · unproven'"></span>
+                    :class="'bg-emerald-900 text-emerald-300'"
+                    x-text="'PICK'"></span>
               <span x-show="!r.is_pick && r.covered_by" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400"
                     x-text="'same bet as the '+marketLabel(r.covered_by).toLowerCase()+' pick'"></span>
             </div>
@@ -204,9 +204,6 @@
 
     <div class="flex items-center justify-between mb-2">
       <p class="text-sm">Waiting on games <span class="text-slate-500" x-text="'('+openBets().length+')'"></span></p>
-      <label class="text-[11px] text-slate-400 flex items-center gap-1">
-        <input type="checkbox" x-model="showUnproven"> show experimental bets
-      </label>
     </div>
     <p class="text-sm text-slate-500 card p-4 mb-3" x-show="!openBets().length">No open bets.</p>
     <div class="space-y-2 mb-5">
@@ -220,9 +217,6 @@
                 <p class="text-[11px] text-slate-500"
                    x-text="american(b.best_price)+' ('+dec(b.best_price)+') at '+bookName(b.best_book)+' · model '+pct(b.p_model,0)+' vs market '+pct(b.p_market,0)+(b.clv==null?'':' · closed at '+american(b.close_price)+(b.clv>0?' ✓ beat the close':' ✗ did not beat the close'))"></p>
               </div>
-              <span class="text-[10px] px-2 py-0.5 rounded whitespace-nowrap"
-                    :class="b.validated && b.line_type==='early' ? 'bg-emerald-900 text-emerald-300' : 'bg-amber-900/60 text-amber-300'"
-                    x-text="b.validated && b.line_type==='early' ? 'backed by backtest' : 'experimental'"></span>
             </div>
           </template>
         </div>
@@ -274,7 +268,7 @@
   <div x-show="tab==='model'" class="px-4 space-y-3 text-[13px] leading-relaxed">
     <div class="card p-4">
       <p class="text-sm mb-1">How picks are made</p>
-      <p class="text-[12px] text-slate-400">Every pick runs the same eight steps, at 9:30 and 18:30 Pacific, or from Admin → Run picks.</p>
+      <p class="text-[12px] text-slate-400">Every pick runs the same eight steps, once a day at 2:00 PM Pacific for that day's games, or from Admin → Run full formula.</p>
     </div>
 
     <div class="card p-4 space-y-2">
@@ -316,8 +310,7 @@
         <li>Edge at least: <span x-text="'moneyline '+pct((algo.min_edges||{}).h2h,0)+', totals '+pct((algo.min_edges||{}).totals,0)+', puck line '+pct((algo.min_edges||{}).spreads,0)+', regulation '+pct((algo.min_edges||{}).reg3,0)"></span>.</li>
         <li>Clean: neither team plays another game first, so the model has every result the bet depends on.</li>
         <li>A line is posted and the game has not started.</li>
-        <li>Early line (a later date than today): the bet type the backtest supports. Game-day lines <span x-text="algo.game_day_picks ? 'are also picked, as experimental' : 'are shown but not picked'"></span>.</li>
-        <li>Backed by the backtest: <span x-text="(algo.validated||[]).map(k=>marketLabel(k.split('|')[0])+' ('+k.split('|')[1]+' line)').join(', ')"></span>. Everything else is experimental until its live record proves it (150+ bets beating the close 55%+ of the time).</li>
+        <li>Today's games only, priced at 2:00 PM Pacific against the odds at that moment.</li>
       </ul>
 
       <p class="text-slate-200 pt-1">7b · One pick per game per team</p>
@@ -359,7 +352,7 @@
       <p class="text-sm mb-1">Jobs</p>
       <p class="text-xs text-slate-500 mb-3">Queued in the background; one runs at a time.</p>
       <div class="grid grid-cols-2 gap-2">
-        <button @click="runJob('picks')" class="py-2 rounded bg-emerald-600 text-white text-xs">Run picks (today + tomorrow)</button>
+        <button @click="runJob('picks')" class="py-2 rounded bg-emerald-600 text-white text-xs" title="Pulls the latest NHL results, re-scores xG, refits every model (form, goalies, moneyline, goal model, calibration), pulls live odds and builds today's picks. Same as the 2 PM run. About 1 minute; 4 odds credits.">Run full formula (today's games)</button>
         <button @click="runJob('closes')" class="py-2 rounded border border-slate-600 text-xs">Capture closes (3 credits)</button>
         <button @click="runJob('results')" class="py-2 rounded border border-slate-600 text-xs">Results + grade</button>
         <button @click="runJob('betnhl')" class="py-2 rounded border border-slate-600 text-xs">BetNHL snapshot</button>
@@ -417,7 +410,7 @@ function algo(){return{
   tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'betnhl',label:'BetNHL'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
   tabTitle(){ return {board:'Board',picks:'Paper picks',betnhl:'BetNHL',model:'Model',admin:'Admin'}[this.tab] },
-  subtitle(){ return {board:'Model vs market, next 36 hours',picks:'Early-line picks, graded against the close',
+  subtitle(){ return {board:'Today\'s games, model vs market at 2 PM PT',picks:'Game-day picks, graded against the close',
     betnhl:'Their free daily tips',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
   glossary(){
     if(this.tab==='board') return [
@@ -426,9 +419,7 @@ function algo(){return{
       {term:'Total',def:'Final goals, over or under the line. The overtime or shootout winner is credited one goal.'},
       {term:'Puck line',def:'Final margin with a 1.5-goal handicap (+1.5 / -1.5). An overtime or shootout result is a one-goal margin.'},
       {term:'Regulation',def:'Result after 60 minutes only: home, away or tie. Overtime does not count.'},
-      {term:'unproven',def:'Puck line and game-day picks had no demonstrated edge in the backtest. They are tracked separately so the live record can show whether they work.'},
       {term:'edge',def:'How much more likely our side is to win than the market says, in percentage points.'},
-      {term:'early line',def:'A game on a later date than today. The backtest found an edge only here; by game day the market has caught up.'},
       {term:'plays before this',def:'One of the teams has another game first, so the model would be missing a result the bet depends on. Never a pick.'},
     ];
     if(this.tab==='picks') return [
@@ -522,9 +513,8 @@ function algo(){return{
     const gs=Object.values(by); gs.forEach(g=>g.rows.sort((a,b)=>order[a.market]-order[b.market]));
     return gs.sort((a,b)=>(b.rows.some(r=>r.is_pick)-a.rows.some(r=>r.is_pick))||(a.start_utc<b.start_utc?-1:1));
   },
-  proven(b){ return !!b.validated && (b.line_type||'early')==='early' },
-  openBets(){ return this.paper.filter(b=>!b.result && (this.showUnproven || this.proven(b))) },
-  settledBets(){ return this.paper.filter(b=>b.result && (this.showUnproven || this.proven(b))) },
+  openBets(){ return this.paper.filter(b=>!b.result) },
+  settledBets(){ return this.paper.filter(b=>b.result) },
   betGames(list){
     const by={};
     for(const b of list){ (by[b.game_id] ||= {key:b.game_id,home:b.home,away:b.away,start_utc:b.start_utc,bets:[]}).bets.push(b) }
@@ -541,10 +531,9 @@ function algo(){return{
   recordRows(){
     const out=[];
     for(const [key,r] of Object.entries(this.paperByMarket||{})){
-      const [m,lt]=key.split('|'), proven=['h2h|early','totals|early','reg3|early'].includes(key);
-      if(!proven && !this.showUnproven) continue;
+      const [m,lt]=key.split('|'), proven=true;
       const graded=r.wins+r.losses+(r.pushes||0);
-      out.push({key, proven, label:this.marketLabel(m)+(lt==='early'?'':' (game day)'),
+      out.push({key, proven, label:this.marketLabel(m)+(lt==='early'?' (old day-before picks)':''),
         text: graded ? (r.wins+'-'+r.losses+(r.pushes?'-'+r.pushes:'')+' · '+(r.units>0?'+':'')+r.units+'u · beat the close '+(r.beat_close_pct==null?'—':pct(r.beat_close_pct,0))+(r.open?' · '+r.open+' open':''))
                      : (r.open+' open, none graded yet')});
     }

@@ -4,14 +4,9 @@ Prices every NHL regular-season game starting in the next `hours` hours, against
 Moneyline: the shot-based win model (models/winprob). Totals, puck line, regulation 3-way: the goal
 model (models/goals), totals and spreads calibrated per market on out-of-sample results.
 A game is "clean" when neither team plays before it (all model inputs known at bet time).
-Two kinds of pick, tracked separately:
-  early     clean games on a later date than today (Pacific). The backtest found an edge here.
-  game-day  clean games today, when game_day=True. The backtest found NO edge here (2023-26, edge >= 5%:
-            1,081 bets, line moved our way 51%, ROI -0.8%); they are logged so the live record can say
-            whether that holds.
-Validated (backtest, early line, 2023-26): moneyline (edge >= 5%: line moved our way 74%), totals
-(edge >= 3%: 67%) and regulation 3-way (edge >= 5%: 535 bets, 78%; prices from EU books). Puck line is
-unproven and tracked separately, like game-day picks.
+Live: one run a day at 2 p.m. Pacific, today's games only (today_only=True, game_day=True).
+Backtest note (docs/experiments.md): on the morning and ~75-minute lines, picks did not beat the fair
+closing price; the edge measured was on the day-before line.
 Goalies: the expected starter (goalies.py), since the starter is usually unknown this early. Picks are logged for paper trading.
 """
 import json
@@ -125,7 +120,8 @@ def _two_way_row(base: dict, market: str, mk, p_model_a: float) -> dict:
 
 
 def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bool = False,
-        reg3_feed: bool = True) -> dict:
+        reg3_feed: bool = True, today_only: bool = False) -> dict:
+    """today_only: price only today's games (Pacific date); the 2 p.m. game-day run uses this."""
     thresholds = dict(DEFAULT_MIN_EDGE)
     if isinstance(min_edge, (int, float)):
         thresholds = {k: float(min_edge) for k in thresholds}
@@ -134,6 +130,8 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
 
     status = catch_up(con)
     fx = fixtures(hours)
+    if today_only and not fx.empty:
+        fx = fx[fx["game_date"].astype(str) == datetime.now(PACIFIC).date().isoformat()]
     empty = {"status": status, "board": pd.DataFrame(), "picks": pd.DataFrame(), "credits_remaining": None}
     if fx.empty:
         return empty

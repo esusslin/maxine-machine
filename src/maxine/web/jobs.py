@@ -2,8 +2,7 @@
 
     03:30  results + xG + grade paper picks
     10:00  BetNHL daily tips snapshot
-    09:30  picks: today's games on the morning line (game-day picks, if GAME_DAY_PICKS) + tomorrow
-    18:30  picks: tomorrow's early line (+ any of today's games not started, if GAME_DAY_PICKS)
+    14:00  picks: today's games only, game-day line (one run a day; Admin -> Run picks does the same)
     every 15 min, 09:00-20:45  closing-price capture, only when a picked game is about to start
     hourly heartbeat
 First boot with an empty warehouse: backfill five NHL seasons from the free NHL API (about 2 hours).
@@ -81,7 +80,7 @@ def run_picks() -> dict:
     with job_run("picks") as ctx:
         con = connect()
         try:
-            r = picks.run(con, hours=36, min_edge=settings.MIN_EDGES, game_day=settings.GAME_DAY_PICKS,
+            r = picks.run(con, hours=24, min_edge=settings.MIN_EDGES, game_day=True, today_only=True,
                           reg3_feed=settings.REG3_FEED)
         finally:
             con.close()
@@ -127,8 +126,7 @@ def betnhl_snapshot() -> dict:
 JOBS = [
     (results_and_grade, "cron", dict(hour=3, minute=30), "results_and_grade"),
     (betnhl_snapshot, "cron", dict(hour=10, minute=0), "betnhl_snapshot"),
-    (run_picks, "cron", dict(hour=9, minute=30), "picks_morning"),
-    (run_picks, "cron", dict(hour=18, minute=30), "picks_evening"),
+    (run_picks, "cron", dict(hour=14, minute=0), "picks_gameday"),
     (capture_closes, "cron", dict(hour="9-20", minute="*/15"), "capture_closes"),
     (heartbeat, "interval", dict(minutes=60), "heartbeat"),
 ]
