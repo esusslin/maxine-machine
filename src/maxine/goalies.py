@@ -38,12 +38,14 @@ def _team_starts(con) -> pd.DataFrame:
         ORDER BY t.team, g.start_utc, t.game_id
     """).df()
     df["game_date"] = pd.to_datetime(df["game_date"])
+    # plain ints, None when the box score has no starter (NULL arrives as NaN or pd.NA depending on versions)
+    df["starter"] = pd.Series([int(x) if pd.notna(x) else None for x in df["starter"]], index=df.index, dtype=object)
     return df
 
 
 def _candidate_rows(starters: list, dates: list, last_start: dict, date, base: dict) -> list[dict]:
     """Candidate rows for one team-game given the team's starters/dates before it."""
-    prev = [p for p in starters[-WINDOW:] if p == p]
+    prev = [p for p in starters[-WINDOW:] if p is not None]
     if not prev:
         return []
     b2b = int(bool(dates) and (date - dates[-1]).days == 1)
@@ -75,7 +77,7 @@ def candidate_frame(con) -> pd.DataFrame:
                 rows.append(c)
             starters.append(r.starter)
             dates.append(r.game_date)
-            if r.starter == r.starter:
+            if r.starter is not None:
                 last_start[r.starter] = r.game_date
     return pd.DataFrame(rows)
 
@@ -157,7 +159,7 @@ def upcoming(con, fixtures: pd.DataFrame) -> pd.DataFrame:
             starters, dates = g["starter"].tolist(), g["game_date"].tolist()
             last_start = {}
             for p, d in zip(starters, dates):
-                if p == p:
+                if p is not None:
                     last_start[p] = d
             cands = _candidate_rows(starters, dates, last_start, date, {"game_id": f.game_id, "team": team})
             if not cands:
