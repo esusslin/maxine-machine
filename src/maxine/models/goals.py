@@ -237,6 +237,36 @@ def calibrators(con) -> dict:
     return {"totals": _platt(tot_p, tot_y), "spreads": _platt(spr_p, spr_y)}
 
 
+LINE_CAL_TOTALS = (2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5)
+LINE_CAL_SPREADS = (-4.5, -3.5, -2.5, -1.5, 1.5, 2.5, 3.5, 4.5)
+
+
+def line_calibrators(con) -> dict:
+    """Platt (a, b) per line: ("total", L) on P(over L), ("spread", h) on P(home covers h). Fit on out-of-sample
+    predictions against results. Used for alternate lines, where one calibration per market is wrong: the score
+    grid is too narrow for big margins (home +2.5: model 87%, actual 82%), and the main-line totals calibration
+    squeezes far totals toward 50% (over 4.5: 67% calibrated, 76% raw, 79% actual). docs/experiments.md 10."""
+    lam, models = walk_forward(con)
+    g = game_outcomes(con).merge(lam, on=["game_id", "season"])
+    ps = {("total", L): ([], []) for L in LINE_CAL_TOTALS} | {("spread", h): ([], []) for h in LINE_CAL_SPREADS}
+    for r in g.itertuples():
+        pr = price(models[int(r.season)], r.lam_h, r.lam_a)
+        T, M = r.home_score + r.away_score, r.home_score - r.away_score
+        for L in LINE_CAL_TOTALS:
+            o, u, _ = prob_total(pr, L)
+            ps[("total", L)][0].append(o / (o + u)); ps[("total", L)][1].append(T > L)
+        for h in LINE_CAL_SPREADS:
+            c, l_, _ = prob_spread(pr, h)
+            ps[("spread", h)][0].append(c / (c + l_)); ps[("spread", h)][1].append(M + h > 0)
+    return {k: _platt(p, y) for k, (p, y) in ps.items()}
+
+
+def line_cal_for(cals: dict, kind: str, line: float) -> tuple[float, float]:
+    """The calibrator of the nearest calibrated line of that kind."""
+    keys = [k for k in cals if k[0] == kind]
+    return cals[min(keys, key=lambda k: abs(k[1] - line))]
+
+
 def apply_cal(p: float, ab: tuple[float, float] | None) -> float:
     if ab is None:
         return p

@@ -102,3 +102,45 @@ def test_parlays_one_leg_per_game_and_book_pricing():
     assert all(l["selection"].endswith("+1.5") for l in four["legs"])
     assert four["book"] == "dk" and abs(four["price"] - 1.40 ** 4) < 1e-9
     assert abs(four["p_model"] - 0.70 ** 4) < 1e-9
+
+
+def _bovada_payload():
+    def ev(home, away, eid, alt):
+        return {"id": eid, "home_team": home, "away_team": away, "bookmakers": [{"key": "bovada", "markets": [
+            {"key": "h2h", "outcomes": [{"name": home, "price": 1.70}, {"name": away, "price": 2.20}]},
+            {"key": "alternate_spreads", "outcomes": [
+                {"name": away, "price": alt, "point": 2.5}, {"name": home, "price": 3.9, "point": -2.5},
+                {"name": away, "price": 1.55, "point": 1.5}, {"name": home, "price": 2.45, "point": -1.5}]},
+            {"key": "alternate_totals", "outcomes": [
+                {"name": "Over", "price": 1.25, "point": 4.5}, {"name": "Under", "price": 3.8, "point": 4.5},
+                {"name": "Over", "price": 1.9, "point": 6.0}]},   # whole number: skipped
+        ]}]}
+    return {"events": [ev("New York Rangers", "Boston Bruins", "e1", 1.22),
+                       ev("Dallas Stars", "St Louis Blues", "e2", 1.25),
+                       ev("Tampa Bay Lightning", "Detroit Red Wings", "e3", 1.20)]}
+
+
+def test_bovada_legs_and_search():
+    import pandas as pd
+    from maxine import bovada
+    from maxine.models.goals import GoalModel, price
+    t = pd.Timestamp("2026-11-10T00:00Z")
+    fx = pd.DataFrame([{"game_id": 1, "home": "NYR", "away": "BOS", "start_utc": t},
+                       {"game_id": 2, "home": "DAL", "away": "STL", "start_utc": t},
+                       {"game_id": 3, "home": "TBL", "away": "DET", "start_utc": t}])
+    gm = GoalModel(None, None, 1.37, 0.36, 0.0, 0.9)
+    prices = {g: price(gm, 3.1, 2.9) for g in (1, 2, 3)}
+    cals = {("total", 5.5): (0.0, 1.0), ("spread", 1.5): (0.0, 1.0)}
+    lg = bovada.legs(_bovada_payload(), fx, {1: 0.55, 2: 0.55, 3: 0.55}, prices, cals)
+    assert not (lg["line"] % 1 == 0).loc[lg["kind"] != "moneyline"].any()     # Over 6.0 skipped
+    assert set(lg[lg["game_id"] == 1]["selection"]) >= {"BOS +2.5", "NYR -2.5", "Over 4.5", "NYR to win"}
+    pb = lg[(lg["game_id"] == 1) & (lg["selection"] == "BOS +2.5")]["p_book"].iloc[0]
+    assert abs(pb - (1 / 1.22) / (1 / 1.22 + 1 / 3.9)) < 1e-9                  # paired with NYR -2.5
+    opts = bovada.search(lg)
+    assert 1 <= len(opts) <= 3
+    assert [o["rank"] for o in opts] == list(range(1, len(opts) + 1))
+    assert all(-145 <= o["american"] <= -120 for o in opts)
+    assert len({tuple(sorted(l["game_id"] for l in o["legs"])) for o in opts}) == len(opts)
+    assert opts == sorted(opts, key=lambda o: -o["p_model"])
+    for o in opts:
+        assert len({l["game_id"] for l in o["legs"]}) == o["legs_n"]           # one leg per game

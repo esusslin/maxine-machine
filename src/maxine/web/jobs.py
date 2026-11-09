@@ -1,7 +1,6 @@
 """Scheduled jobs (APScheduler, in-process, one at a time). Times are America/Los_Angeles.
 
     03:30  results + xG + grade paper picks
-    10:00  BetNHL daily tips snapshot
     14:00  picks: today's games only, game-day line (one run a day; Admin -> Run picks does the same)
     every 15 min, 09:00-20:45  closing-price capture, only when a picked game is about to start
     hourly heartbeat
@@ -93,6 +92,7 @@ def run_picks() -> dict:
         set_kv("board", json.dumps({"records": records, "min_edges": settings.MIN_EDGES,
                                     "game_day_picks": settings.GAME_DAY_PICKS}))
         set_kv("parlays", json.dumps({"parlays": r.get("parlays", [])}, default=_clean))
+        set_kv("bovada", json.dumps(r.get("bovada") or {"options": []}, default=_clean))
         if r.get("credits_remaining") is not None:
             set_kv("odds_credits_remaining", str(r["credits_remaining"]))
         stored = paper.store_picks(r["picks"]) if not r["picks"].empty else 0
@@ -126,7 +126,6 @@ def betnhl_snapshot() -> dict:
 
 JOBS = [
     (results_and_grade, "cron", dict(hour=3, minute=30), "results_and_grade"),
-    (betnhl_snapshot, "cron", dict(hour=10, minute=0), "betnhl_snapshot"),
     (run_picks, "cron", dict(hour=14, minute=0), "picks_gameday"),
     (capture_closes, "cron", dict(hour="9-20", minute="*/15"), "capture_closes"),
     (heartbeat, "interval", dict(minutes=60), "heartbeat"),

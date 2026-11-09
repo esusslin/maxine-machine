@@ -91,7 +91,7 @@ def cmd_clv(_args):
 
 def cmd_picks(args):
     con = connect()
-    picks.print_report(picks.run(con, hours=args.hours, min_edge=args.min_edge, game_day=args.game_day,
+    picks.print_report(picks.run(con, hours=24, min_edge=args.min_edge, game_day=True, today_only=True,
                                  reg3_feed=not args.no_reg3))
 
 
@@ -179,12 +179,10 @@ def main():
     s = sub.add_parser("clv", help="edge test: line movement toward the model and ROI at the morning line")
     s.set_defaults(func=cmd_clv)
 
-    s = sub.add_parser("picks", help="evening job: price upcoming games vs current odds, log early-line picks")
-    s.add_argument("--hours", type=int, default=36, help="price games starting within this many hours")
+    s = sub.add_parser("picks", help="the full formula for today's games (same as the 2 PM run): picks + parlays")
     s.add_argument("--min-edge", type=float, default=None,
-                   help="one minimum edge for every market (default per market: ML 5%%, totals 3%%, puck line 5%%, reg 5%%)")
+                   help="one minimum edge for every market (default per market: ML 5%%, totals 5%%, puck line 7%%, reg 5%%)")
     s.add_argument("--no-reg3", action="store_true", help="skip the EU regulation 3-way feed (saves 1 credit)")
-    s.add_argument("--game-day", action="store_true", help="also pick today's games (no backtested edge)")
     s.set_defaults(func=cmd_picks)
 
     s = sub.add_parser("markets", help="backtest totals, puck line and regulation 3-way against their own lines")

@@ -69,3 +69,24 @@ def historical_snapshot(league: str, at_iso: str) -> dict:
         "remaining": resp.headers.get("x-requests-remaining")}, **body}))
     return {"path": str(path), "credits_used_this_call": resp.headers.get("x-requests-last"),
             "credits_remaining": resp.headers.get("x-requests-remaining")}
+
+
+BOVADA_MARKETS = "h2h,spreads,totals,alternate_spreads,alternate_totals"
+
+
+def bovada_events(event_ids: list[str]) -> dict:
+    """Bovada main and alternate lines, one request per game (event-odds endpoint; about 1 credit per market
+    returned). Saved raw as one file. Returns {path, events, credits_remaining}."""
+    key = _require_key()
+    now = datetime.now(timezone.utc)
+    events, remaining = [], None
+    for eid in event_ids:
+        resp = get(f"{ODDS_BASE}/sports/icehockey_nhl/events/{eid}/odds", params={
+            "apiKey": key, "bookmakers": "bovada", "markets": BOVADA_MARKETS,
+            "oddsFormat": "decimal", "dateFormat": "iso",
+        }, min_interval=1.0)
+        events.append(resp.json())
+        remaining = resp.headers.get("x-requests-remaining", remaining)
+    path = raw_path("odds", "bovada", f"{now.strftime('%Y-%m-%dT%H-%M-%SZ')}.json")
+    path.write_text(json.dumps({"taken_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "events": events}))
+    return {"path": str(path), "events": len(events), "credits_remaining": remaining}

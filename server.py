@@ -39,8 +39,7 @@ SCORECARD = ROOT / "reports" / "scorecard.json"
 EXPECTED_FRESHNESS = {
     "heartbeat": timedelta(hours=2),
     "results_and_grade": timedelta(hours=30),
-    "picks": timedelta(hours=14),
-    "betnhl_snapshot": timedelta(hours=30),
+    "picks": timedelta(hours=26),      # one run a day at 2 PM
     "capture_closes": timedelta(hours=14),
 }
 STARTUP_GRACE = timedelta(hours=3)
@@ -49,7 +48,6 @@ MANUAL = {
     "picks": jobs.run_picks,
     "closes": lambda: jobs.capture_closes(force=True),
     "results": jobs.results_and_grade,
-    "betnhl": jobs.betnhl_snapshot,
     "bootstrap": jobs.bootstrap,
 }
 
@@ -290,6 +288,14 @@ def board(user: dict = Depends(auth.current_user)) -> dict:
 def parlays_today(user: dict = Depends(auth.current_user)) -> dict:
     row = get_kv("parlays")
     data = json.loads(row["value"]) if row else {"parlays": []}
+    data["updated_at"] = row["updated_at"] if row else None
+    return data
+
+
+@app.get("/api/bovada")
+def bovada_parlays(user: dict = Depends(auth.current_user)) -> dict:
+    row = get_kv("bovada")
+    data = json.loads(row["value"]) if row else {"options": []}
     data["updated_at"] = row["updated_at"] if row else None
     return data
 
