@@ -145,7 +145,7 @@ def test_ladder_shared_lines_and_search():
     opts = ladder.search(lg)
     assert 1 <= len(opts) <= 3
     assert [o["rank"] for o in opts] == list(range(1, len(opts) + 1))
-    assert all(-145 <= o["american"] <= -130 and o["book"] in ("bovada", "draftkings") for o in opts)
+    assert all(-140 <= o["american"] <= -120 and o["book"] in ("bovada", "draftkings") for o in opts)
     assert len({tuple(sorted(l["game_id"] for l in o["legs"])) for o in opts}) == len(opts)
     assert opts == sorted(opts, key=lambda o: -o["p_model"])
     assert all("Under 9.5" not in [l["selection"] for l in o["legs"]] for o in opts)
