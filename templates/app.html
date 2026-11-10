@@ -331,7 +331,7 @@
     <p class="text-sm text-amber-300 card p-3" x-show="lines.error" x-text="lines.error"></p>
 
     <p class="text-sm font-semibold pt-1">My teams</p>
-    <p class="text-[11px] text-slate-500 -mt-1">Pick teams and move their lines anywhere with − / +; the window is only a guide (green).</p>
+    <p class="text-[11px] text-slate-500 -mt-1">In each game pick a team, or Over / Under, and move the line with − / + (+ adds cushion); the window is only a guide (green).</p>
 
     <!-- the slip -->
     <div class="card p-3 sticky top-0 z-10" x-show="slipLegs().length">
@@ -367,7 +367,7 @@
         <div class="flex items-center justify-between gap-2">
           <p class="text-[12px] text-slate-400" x-text="g.away+' @ '+g.home+' · '+when(g.start_utc)"></p>
           <div class="flex rounded border border-slate-700 overflow-hidden text-[12px]">
-            <template x-for="t in [g.away, g.home]" :key="t">
+            <template x-for="t in [g.away, g.home, 'Over', 'Under']" :key="t">
               <button @click="pickTeam(g, t)" class="px-2 py-1" :disabled="!(g.teams[t]||[]).length"
                       :class="(slip[g.game_id]||{}).team===t ? 'bg-emerald-700 text-white' : ((g.teams[t]||[]).length ? 'text-slate-300' : 'text-slate-600')"
                       x-text="t + (t===g.home ? ' (H)' : '')"></button>
@@ -410,7 +410,7 @@
       </div>
     </template>
 
-    <p class="text-[11px] text-slate-500 pt-1">How it works: pick a team in any game, then use − / + to move its line (−1.5, to win, +1.5, +2.5, +3.5…). Only lines both Bovada and DraftKings offer are listed. The parlay price is each book's prices multiplied; a book's number turns green inside −120 to −140. Each leg's chance blends the model with the market (puck line underdog 60% model, moneyline 40%, puck line favourite 25%); chance to hit multiplies the legs. Suggest padding picks the lines for your teams with the best chance that land inside −120 to −140 at both books. Suggestions below are the three most likely parlays inside the window at both books (they may include totals). Uses the last pulled prices; no credits.</p>
+    <p class="text-[11px] text-slate-500 pt-1">How it works: in any game pick a team, or Over or Under for the game total, then use − / + to move the line; + always adds cushion (team: −1.5 → to win → +1.5 → +2.5…; Over: 6.5 → 5.5 → 4.5…; Under: 5.5 → 6.5 → 7.5…). One leg per game: books price same-game combinations differently, so a team and a total from the same game can't be stacked here. Only lines both Bovada and DraftKings offer are listed. The parlay price is each book's prices multiplied; a book's number turns green inside −120 to −140. Each leg's chance blends the model with the market (puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%); chance to hit multiplies the legs. Suggest padding picks the lines for your teams with the best chance that land inside −120 to −140 at both books. Suggestions below are the three most likely parlays inside the window at both books (they may include totals). Uses the last pulled prices; no credits.</p>
   </div>
 
   <!-- ============ model ============ -->
@@ -695,7 +695,10 @@ function algo(){return{
     if((sl[g.game_id]||{}).team===team){ delete sl[g.game_id] }
     else {
       const opts=g.teams[team]||[]; if(!opts.length) return;
-      let i=opts.findIndex(o=>o.label==='+1.5'); if(i<0) i=opts.findIndex(o=>o.kind==='moneyline'); if(i<0) i=0;
+      let i;
+      if(team==='Over'||team==='Under'){       // start at the line closest to a coin flip, then pad with +
+        i=opts.reduce((b,o,k)=>Math.abs(o.p-0.5)<Math.abs(opts[b].p-0.5)?k:b,0);
+      } else { i=opts.findIndex(o=>o.label==='+1.5'); if(i<0) i=opts.findIndex(o=>o.kind==='moneyline'); if(i<0) i=0; }
       sl[g.game_id]={team, idx:i};
     }
     this.slip=sl; this.myMsg='';
@@ -723,7 +726,7 @@ function algo(){return{
       const i=opts.findIndex(x=>x.selection===l.selection);
       if(i>=0) sl[l.game_id]={team, idx:i};
     }
-    this.slip=sl; this.myMsg=Object.keys(sl).length<o.legs.length ? 'Some legs are totals and stay out of My teams.' : '';
+    this.slip=sl; this.myMsg=Object.keys(sl).length<o.legs.length ? 'Some legs are not offered at both books and were left out.' : '';
     window.scrollTo({top:0,behavior:'smooth'});
   },
   async suggestPadding(){

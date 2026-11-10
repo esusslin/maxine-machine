@@ -246,3 +246,32 @@ def test_ladder_lines_for_playground(tmp_path):
     assert set(bos[2]["prices"]) == {"bovada", "draftkings"} and bos[2]["prices"]["bovada"] == 1.20
     assert bos[0]["p"] < bos[1]["p"] < bos[2]["p"]                          # more padding, more likely
     assert [o["label"] for o in out["games"][0]["teams"]["NYR"]] == ["-2.5", "-1.5", "to win"]
+    over, under = out["games"][0]["teams"]["Over"], out["games"][0]["teams"]["Under"]
+    assert [o["selection"] for o in over] == ["Over 4.5"] and [o["selection"] for o in under] == ["Under 4.5"]
+    assert abs(over[0]["p"] + under[0]["p"] - 1) < 1e-9                    # Under 9.5 (Bovada only) is not listed
+
+
+def test_playground_total_order():
+    """+ adds cushion: Over lines go down, Under lines go up."""
+    import json
+    import pandas as pd
+    import tempfile, os
+    from maxine import picks
+    def ev(home, away):
+        totals = []
+        for L in (3.5, 4.5, 5.5, 6.5, 7.5):
+            totals += [{"name": "Over", "price": 1.1 + 0.25 * (L - 3.5), "point": L},
+                       {"name": "Under", "price": 1.1 + 0.25 * (7.5 - L), "point": L}]
+        return {"id": "e", "home_team": home, "away_team": away, "bookmakers": [
+            {"key": b, "markets": [{"key": "alternate_totals", "outcomes": totals}]} for b in ("bovada", "draftkings", "fanduel")]}
+    d = tempfile.mkdtemp(); path = os.path.join(d, "a.json")
+    open(path, "w").write(json.dumps({"taken_at": "x", "events": [ev("New York Rangers", "Boston Bruins")]}))
+    t = (pd.Timestamp.now(tz="UTC") + pd.Timedelta(hours=3)).isoformat()
+    state = {"games": [{"game_id": 1, "home": "NYR", "away": "BOS", "start_utc": t, "event_id": "e"}],
+             "p_ml": {"1": 0.55}, "lam": {"1": [3.1, 2.9]}, "gm": [1.37, 0.36, 0.0, 0.9],
+             "line_cals": [["total", 5.5, 0.0, 1.0], ["spread", 1.5, 0.0, 1.0]], "alt_path": path}
+    g = picks.ladder_lines(state)["games"][0]["teams"]
+    assert [o["label"] for o in g["Over"]] == ["7.5", "6.5", "5.5", "4.5", "3.5"]
+    assert [o["label"] for o in g["Under"]] == ["3.5", "4.5", "5.5", "6.5", "7.5"]
+    assert all(a["p"] < b["p"] for a, b in zip(g["Over"], g["Over"][1:]))      # more cushion, more likely
+    assert all(a["p"] < b["p"] for a, b in zip(g["Under"], g["Under"][1:]))

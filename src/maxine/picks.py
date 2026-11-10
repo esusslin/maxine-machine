@@ -285,9 +285,11 @@ def _ladder_legs(state: dict, payload: dict, fx: pd.DataFrame) -> pd.DataFrame:
 
 
 def ladder_lines(state: dict) -> dict:
-    """Every moneyline and puck line offered at BOTH Bovada and DraftKings for today's games, per team, with
-    each book's price and the blended chance, from the last pulled lines (no credits). For the Ladder
-    playground: the page multiplies the legs you choose."""
+    """Every moneyline, puck line and game total offered at BOTH Bovada and DraftKings for today's games, per
+    team (and per Over / Under), with each book's price and the blended chance, from the last pulled lines (no
+    credits). For the Ladder playground: the page multiplies the legs you choose, one per game.
+    Each list is ordered so that the next entry has more cushion (team: -2.5 ... to win ... +3.5;
+    Over: 7.5 ... 3.5; Under: 4.5 ... 8.5)."""
     path = state.get("alt_path")
     if not path:
         raise RuntimeError("no lines yet: run the full formula or refresh the Ladder first")
@@ -295,17 +297,18 @@ def ladder_lines(state: dict) -> dict:
     fx = pd.DataFrame(state["games"])
     fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
     lg = _ladder_legs(state, payload, fx)
-    lg = lg[lg["kind"].isin(["moneyline", "puck line"])] if len(lg) else lg
+    lg = lg[lg["kind"].isin(["moneyline", "puck line", "total"])] if len(lg) else lg
     joint = ladder._joint_legs(lg, ladder.BET_BOOKS) if len(lg) else pd.DataFrame()
     games = []
     for g in state["games"]:
         teams = {}
-        for team in (g["away"], g["home"]):
+        for team in (g["away"], g["home"], "Over", "Under"):
             rows = joint[(joint["game_id"] == g["game_id"]) & (joint["selection"].str.split().str[0] == team)] \
                 if len(joint) else joint
             opts = []
             for r in rows.itertuples():
-                order = 0.0 if r.kind == "moneyline" else float(r.selection.split()[1])
+                num = 0.0 if r.kind == "moneyline" else float(r.selection.split()[1])
+                order = -num if team == "Over" else num
                 opts.append({"selection": r.selection, "kind": r.kind, "order": order,
                              "label": "to win" if r.kind == "moneyline" else r.selection.split()[1],
                              "prices": {b: float(x) for b, x in zip(ladder.BET_BOOKS, r.prices)},
@@ -328,7 +331,7 @@ def ladder_my_teams(state: dict, teams: list[dict]) -> dict:
     fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
     lg = _ladder_legs(state, payload, fx)
     want = {(int(t["game_id"]), t["team"]) for t in teams}
-    sel = lg[lg["kind"].isin(["moneyline", "puck line"])].copy()
+    sel = lg[lg["kind"].isin(["moneyline", "puck line", "total"])].copy()
     sel = sel[[(g, s.split()[0]) in want for g, s in zip(sel["game_id"], sel["selection"])]]
     out = {"priced_at": payload.get("taken_at"), "teams": len(want), "inside_window": True,
            "target": [ladder.TARGET_SHORT, ladder.TARGET_LONG]}
