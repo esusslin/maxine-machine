@@ -302,6 +302,28 @@ def evaluation(user: dict = Depends(auth.current_user)) -> dict:
     return data
 
 
+@app.get("/api/ladder/games")
+def ladder_games(user: dict = Depends(auth.current_user)) -> dict:
+    row = get_kv("ladder_state")
+    state = json.loads(row["value"]) if row else {}
+    return {"games": state.get("games", [])}
+
+
+@app.post("/api/ladder/my-teams")
+def ladder_my_teams(body: dict, user: dict = Depends(auth.current_user)) -> dict:
+    from maxine import picks
+    row = get_kv("ladder_state")
+    if not row:
+        raise HTTPException(409, "no Ladder yet: run the full formula first")
+    teams = body.get("teams") or []
+    if not 2 <= len(teams) <= 5:
+        raise HTTPException(400, "pick 2 to 5 teams")
+    try:
+        return json.loads(json.dumps(picks.ladder_my_teams(json.loads(row["value"]), teams), default=jobs._clean))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
 @app.get("/api/ladder")
 def ladder_parlays(user: dict = Depends(auth.current_user)) -> dict:
     row = get_kv("ladder")

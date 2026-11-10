@@ -205,3 +205,26 @@ def test_ladder_refresh_from_state(monkeypatch, tmp_path):
     assert seen["ids"] == ["e0", "e1", "e2"]                    # the started game is not re-pulled
     assert out["priced_at"] == "2026-11-10T21:00:00Z" and out["credits_remaining"] == "999"
     assert 1 <= len(out["options"]) <= 3 and out["games"] == 3
+
+
+def test_ladder_my_teams(tmp_path):
+    import json
+    import pandas as pd
+    from maxine import picks
+    path = tmp_path / "alt.json"
+    path.write_text(json.dumps({"taken_at": "2026-11-10T21:00:00Z", **_ladder_payload()}))
+    t = (pd.Timestamp.now(tz="UTC") + pd.Timedelta(hours=3)).isoformat()
+    state = {"games": [{"game_id": 1, "home": "NYR", "away": "BOS", "start_utc": t, "event_id": "e0"},
+                       {"game_id": 2, "home": "DAL", "away": "STL", "start_utc": t, "event_id": "e1"},
+                       {"game_id": 3, "home": "TBL", "away": "DET", "start_utc": t, "event_id": "e2"}],
+             "p_ml": {"1": 0.55, "2": 0.55, "3": 0.55}, "lam": {str(g): [3.1, 2.9] for g in (1, 2, 3)},
+             "gm": [1.37, 0.36, 0.0, 0.9], "line_cals": [["total", 5.5, 0.0, 1.0], ["spread", 1.5, 0.0, 1.0]],
+             "alt_path": str(path)}
+    out = picks.ladder_my_teams(state, [{"game_id": 1, "team": "BOS"}, {"game_id": 2, "team": "STL"},
+                                        {"game_id": 3, "team": "DET"}])
+    assert out["inside_window"] and len(out["options"]) == 1
+    o = out["options"][0]
+    assert sorted(l["selection"].split()[0] for l in o["legs"]) == ["BOS", "DET", "STL"]   # only my teams
+    assert all(-140 <= a <= -120 for a in o["prices"].values())
+    bad = picks.ladder_my_teams(state, [{"game_id": 1, "team": "BOS"}, {"game_id": 2, "team": "XXX"}])
+    assert bad["options"] == [] and "XXX" in bad["error"]

@@ -249,6 +249,7 @@ def _ladder(con, us_snapshot_path: str, fx: pd.DataFrame, p_ml: dict, gm, lam: p
              "gm": [gm.tie_factor, gm.en_shift, gm.ot_a, gm.ot_b],
              "line_cals": [[k[0], k[1], v[0], v[1]] for k, v in cals.items()]}
     out = ladder_refresh(state)
+    state["alt_path"] = out.pop("alt_path", None)
     return out, state, out.pop("credits_remaining", None) or credits
 
 
@@ -266,16 +267,54 @@ def ladder_refresh(state: dict) -> dict:
     fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
     snap = odds.alt_lines([g["event_id"] for g in games], ladder.LINE_BOOKS)
     payload = json.loads(open(snap["path"]).read())
-    gm = goals.GoalModel(None, None, *state["gm"])
-    prices = {int(k): goals.price(gm, lh, la) for k, (lh, la) in state["lam"].items()}
-    p_ml = {int(k): v for k, v in state["p_ml"].items()}
-    cals = {(kind, float(line)): (a, b) for kind, line, a, b in state["line_cals"]}
-    lg = ladder.legs(payload, fx, p_ml, prices, cals)
+    lg = _ladder_legs(state, payload, fx)
     shared = lg[lg["shared"]] if len(lg) else lg
     return {**base, "options": ladder.search(lg), "lines": int(len(lg)), "shared_lines": int(len(shared)),
             "books": sorted(lg["book"].unique().tolist()) if len(lg) else [],
             "games": int(lg["game_id"].nunique()) if len(lg) else 0,
-            "priced_at": payload.get("taken_at"), "credits_remaining": snap["credits_remaining"]}
+            "priced_at": payload.get("taken_at"), "credits_remaining": snap["credits_remaining"],
+            "alt_path": snap["path"]}
+
+
+def _ladder_legs(state: dict, payload: dict, fx: pd.DataFrame) -> pd.DataFrame:
+    gm = goals.GoalModel(None, None, *state["gm"])
+    prices = {int(k): goals.price(gm, lh, la) for k, (lh, la) in state["lam"].items()}
+    p_ml = {int(k): v for k, v in state["p_ml"].items()}
+    cals = {(kind, float(line)): (a, b) for kind, line, a, b in state["line_cals"]}
+    return ladder.legs(payload, fx, p_ml, prices, cals)
+
+
+def ladder_my_teams(state: dict, teams: list[dict]) -> dict:
+    """teams: [{game_id, team}] -> the best way to pad exactly those teams (one leg each: moneyline or any puck
+    line) into the window at both books, from the last pulled lines (no credits). If nothing fits, the
+    combination closest to the window is returned and marked outside."""
+    path = state.get("alt_path")
+    if not path:
+        raise RuntimeError("no lines yet: run the full formula or refresh the Ladder first")
+    payload = json.loads(open(path).read())
+    fx = pd.DataFrame(state["games"])
+    fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
+    lg = _ladder_legs(state, payload, fx)
+    want = {(int(t["game_id"]), t["team"]) for t in teams}
+    sel = lg[lg["kind"].isin(["moneyline", "puck line"])].copy()
+    sel = sel[[(g, s.split()[0]) in want for g, s in zip(sel["game_id"], sel["selection"])]]
+    out = {"priced_at": payload.get("taken_at"), "teams": len(want), "inside_window": True,
+           "target": [ladder.TARGET_SHORT, ladder.TARGET_LONG]}
+    if sel["game_id"].nunique() < len(want):
+        missing = sorted({t for g, t in want} - {s.split()[0] for s in sel["selection"]})
+        return {**out, "options": [], "error": f"no shared lines at both books for: {', '.join(missing)}"}
+    n = len(want)
+    found = ladder.search(sel, sizes=(n,), options=1)
+    if not found:                       # nothing lands in the window: the nearest option on each side
+        out["inside_window"] = False
+        shorter = (ladder.search(sel, short=ladder.TARGET_SHORT - 60, long=ladder.TARGET_SHORT - 1, sizes=(n,), options=1)
+                   or ladder.search(sel, short=ladder.TARGET_SHORT - 260, long=ladder.TARGET_SHORT - 61,
+                                    sizes=(n,), options=1))                  # -141..-200, else -201..-400
+        longer = ladder.search(sel, short=ladder.TARGET_LONG + 1, long=150, sizes=(n,), options=1)   # -119..+150
+        found = shorter + longer
+    for i, o in enumerate(found, 1):
+        o["rank"] = i
+    return {**out, "options": found}
 
 
 def print_report(r: dict) -> None:

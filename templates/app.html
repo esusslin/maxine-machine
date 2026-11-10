@@ -345,6 +345,48 @@
         </template>
       </div>
     </template>
+    <!-- my teams: you pick the teams, the model pads them -->
+    <div class="card p-3 space-y-2">
+      <div class="flex items-baseline justify-between">
+        <p class="text-sm font-semibold">My teams</p>
+        <p class="text-[11px] text-slate-500" x-text="Object.keys(myTeams).length+' picked · 2 to 5'"></p>
+      </div>
+      <p class="text-[11px] text-slate-500">Tap the teams you like (one per game). The model picks how to pad each one (moneyline, +1.5, +2.5, -1.5…) for the best chance of all of them hitting, inside -120 to -140 at both Bovada and DraftKings. Uses the last pulled prices; no credits.</p>
+      <div class="flex flex-wrap gap-1.5">
+        <template x-for="g in ladderGames" :key="g.game_id">
+          <div class="flex rounded border border-slate-700 overflow-hidden text-[12px]">
+            <template x-for="t in [g.away, g.home]" :key="t">
+              <button @click="toggleTeam(g.game_id, t)" class="px-2 py-1"
+                      :class="myTeams[g.game_id]===t ? 'bg-emerald-700 text-white' : 'text-slate-300'"
+                      x-text="t + (t===g.home ? ' (H)' : '')"></button>
+            </template>
+          </div>
+        </template>
+      </div>
+      <button @click="padMyTeams()" :disabled="Object.keys(myTeams).length<2 || myBusy"
+              class="py-1.5 px-3 rounded bg-emerald-600 text-white text-xs disabled:opacity-40"
+              x-text="myBusy ? 'Working…' : 'Pad my teams'"></button>
+      <p class="text-sm text-amber-300" x-show="myResult.error" x-text="myResult.error"></p>
+      <p class="text-[12px] text-amber-300" x-show="myResult.options && myResult.inside_window===false"
+         x-text="'These teams cannot land inside -120 to -140 at both books. Nearest options:'"></p>
+      <template x-for="o in (myResult.options||[])" :key="o.rank">
+        <div class="border-t border-slate-800 pt-2">
+          <div class="flex items-baseline justify-between">
+            <p class="text-sm" x-text="o.legs_n+' legs'"></p>
+            <p class="text-sm" x-text="Object.entries(o.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b)).join(' · ')"></p>
+          </div>
+          <p class="text-[12px] text-slate-400"
+             x-text="'Chance to hit: '+pct(o.p_model)+' (model alone '+pct(o.p_model_only)+') · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value at '+bookName(o.book)"></p>
+          <template x-for="l in o.legs" :key="l.game_id">
+            <div class="py-1 flex justify-between gap-2">
+              <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home"></span></p>
+              <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="Object.entries(l.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b).slice(0,3)).join(' / ')+' · chance '+pct(l.p_model,0)"></p>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+
     <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. One leg per game, every 2- to 5-game combination priced between -140 and -120 at both Bovada and DraftKings with the same legs. Ranked by chance to hit; each option uses a different set of games. Each leg's chance blends the model with the market by leg type: puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
   </div>
 
@@ -490,7 +532,7 @@ function algo(){return{
   inviteCode:'', inviteValid:false, inviteReason:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
-  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, ladderBusy:false, evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
+  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, ladderBusy:false, ladderGames:[], myTeams:{}, myResult:{}, myBusy:false, evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
 
   tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'parlays',label:'Parlays'},{key:'ladder',label:'Ladder'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
@@ -574,10 +616,23 @@ function algo(){return{
     if(this.tab==='board') this.board=await this.get('/api/board');
     if(this.tab==='picks'){ this.evaluation=await this.get('/api/evaluation'); const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{}; this.paperByMarket=d.by_market||{} }
     if(this.tab==='parlays') this.parlays=await this.get('/api/parlays');
-    if(this.tab==='ladder') this.ladder=await this.get('/api/ladder');
+    if(this.tab==='ladder'){ this.ladder=await this.get('/api/ladder'); this.ladderGames=(await this.get('/api/ladder/games')).games||[] }
     if(this.tab==='model'){ this.model=await this.get('/api/model'); this.algo=await this.get('/api/algorithm') }
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }
     this.fresh=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  },
+  toggleTeam(gid, team){
+    const m={...this.myTeams};
+    if(m[gid]===team) delete m[gid]; else m[gid]=team;
+    this.myTeams=m;
+  },
+  async padMyTeams(){
+    this.myBusy=true; this.myResult={};
+    const teams=Object.entries(this.myTeams).map(([game_id,team])=>({game_id:Number(game_id),team}));
+    const r=await fetch('/api/ladder/my-teams',{method:'POST',headers:{...this.hdr(),'Content-Type':'application/json'},body:JSON.stringify({teams})});
+    const d=await r.json();
+    this.myResult=r.ok ? d : {error:d.detail||'failed'};
+    this.myBusy=false;
   },
   async refreshLadder(){
     this.ladderBusy=true;

@@ -110,8 +110,11 @@ def refresh_ladder() -> dict:
         row = get_kv("ladder_state")
         if not row:
             raise RuntimeError("no Ladder state yet: run the full formula first")
-        out = picks.ladder_refresh(json.loads(row["value"]))
+        state = json.loads(row["value"])
+        out = picks.ladder_refresh(state)
         credits = out.pop("credits_remaining", None)
+        state["alt_path"] = out.pop("alt_path", None) or state.get("alt_path")
+        set_kv("ladder_state", json.dumps(state, default=_clean))
         set_kv("ladder", json.dumps(out, default=_clean))
         if credits is not None:
             set_kv("odds_credits_remaining", str(credits))
