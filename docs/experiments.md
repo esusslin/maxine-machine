@@ -165,7 +165,7 @@ Closing EV per unit staked vs the fair closing price; ROI is about +6% for every
 Moneyline, puck line and regulation on the same team are one exposure; totals and the regulation tie are
 separate. Live, a later run never adds a second bet on an exposure already bet for that game.
 
-## 10. Alternate lines: calibrate per line — adopted (Bovada tab)
+## 10. Alternate lines: calibrate per line — adopted (Ladder tab)
 
 Goal model, out of sample 2023-26 (4,072 games), chance of each line vs how often it happened:
 
@@ -179,4 +179,4 @@ Goal model, out of sample 2023-26 (4,072 games), chance of each line vs how ofte
 The score grid is too narrow for 3+ goal margins, and the main-line totals calibration (fit on 5.5-6.5)
 pushes far totals toward 50%. Per-line Platt calibration, fit walk-forward on earlier seasons, fixes both
 (log loss better or equal on every line except ±1.5 and 5.5, where it is within 0.002). Used only for the
-Bovada tab's alternate lines; main-line picks are unchanged.
+Ladder tab's alternate lines; main-line picks are unchanged.

@@ -1,4 +1,4 @@
-"""Bovada parlay finder: the most reliable 2- to 4-leg parlay priced near -130.
+"""Ladder: the most likely 2- to 5-leg Bovada parlay priced near -130.
 
 1. Legs: every Bovada line for today's games: moneyline, main and alternate puck lines, main and alternate
    totals. Whole-number lines are skipped (they can push).
@@ -6,8 +6,8 @@
    model's score grid, calibrated per line (goals.line_calibrators), because one calibration per market is
    wrong far from the main line.
 3. One leg per game (legs from the same game move together).
-4. Every 2-, 3- and 4-game combination whose combined Bovada price is between TARGET_LONG and TARGET_SHORT
-   (-120 to -145) is a candidate. At a near-fixed price, the highest chance to hit is also the best value.
+4. Every 2-, 3-, 4- and 5-game combination whose combined Bovada price is between TARGET_LONG and
+   TARGET_SHORT (-120 to -145) is a candidate (exact search, with branch-and-bound pruning). At a near-fixed price, the highest chance to hit is also the best value.
 5. Options 1-3: the highest chance to hit, each on a different set of games.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from maxine.teams import ODDS_NAME_TO_NHL
 
 TARGET_SHORT = -145     # shortest combined price allowed (American)
 TARGET_LONG = -120      # longest combined price allowed
-SIZES = (2, 3, 4)
+SIZES = (2, 3, 4, 5)
 OPTIONS = 3
 
 
@@ -112,19 +112,47 @@ def search(legs_df: pd.DataFrame, short: int = TARGET_SHORT, long: int = TARGET_
     if legs_df is None or legs_df.empty:
         return []
     lo, hi = american_to_decimal(short), american_to_decimal(long)      # e.g. 1.690 .. 1.833
-    by_game = {gid: _frontier(g, hi) for gid, g in legs_df.groupby("game_id")}
+    by_game = {gid: sorted(_frontier(g, hi), key=lambda l: -l.p_model) for gid, g in legs_df.groupby("game_id")}
     by_game = {k: v for k, v in by_game.items() if v}
-    best = {}                                                          # game set -> (p, legs, price)
+    games_all = sorted(by_game, key=lambda g: -by_game[g][0].p_model)   # likeliest games first: finds good sets early
+    top: list[tuple] = []                                              # best per game set, (p, combo, price), desc
+
+    def threshold() -> float:
+        return top[-1][0] if len(top) >= options else 0.0
+
     for n in sizes:
-        for games in itertools.combinations(sorted(by_game), n):
-            for combo in itertools.product(*(by_game[g] for g in games)):
-                price = math.prod(l.price for l in combo)
-                if not lo <= price <= hi:
-                    continue
-                p = math.prod(l.p_model for l in combo)
-                if p > best.get(games, (0,))[0]:
-                    best[games] = (p, combo, price)
-    ranked = sorted(best.values(), key=lambda t: -t[0])[:options]
+        for games in itertools.combinations(games_all, n):
+            ls = [by_game[g] for g in games]
+            max_p = [l[0].p_model for l in ls]
+            if math.prod(max_p) <= threshold():
+                continue                                               # this set cannot reach the top
+            rest_p = [math.prod(max_p[i:]) for i in range(n + 1)]
+            rest_lo = [math.prod(min(x.price for x in l) for l in ls[i:]) for i in range(n + 1)]
+            rest_hi = [math.prod(max(x.price for x in l) for l in ls[i:]) for i in range(n + 1)]
+            best = [0.0, None, None]
+
+            def dfs(i, p, price, chosen):
+                if i == n:
+                    if lo <= price <= hi and p > best[0]:
+                        best[:] = [p, tuple(chosen), price]
+                    return
+                for leg in ls[i]:                                     # sorted by chance, highest first
+                    p2 = p * leg.p_model
+                    if p2 * rest_p[i + 1] <= max(best[0], threshold()):
+                        break                                          # every later leg is less likely
+                    pr2 = price * leg.price
+                    if pr2 * rest_lo[i + 1] > hi or pr2 * rest_hi[i + 1] < lo:
+                        continue                                       # price can no longer land in the window
+                    chosen.append(leg)
+                    dfs(i + 1, p2, pr2, chosen)
+                    chosen.pop()
+
+            dfs(0, 1.0, 1.0, [])
+            if best[1] is not None:
+                top.append(tuple(best))
+                top.sort(key=lambda t: -t[0])
+                del top[options:]
+    ranked = top
     out = []
     for rank, (p, combo, price) in enumerate(ranked, 1):
         p_book = [None if l.p_book is None or pd.isna(l.p_book) else float(l.p_book) for l in combo]

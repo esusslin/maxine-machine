@@ -296,7 +296,7 @@
         </template>
       </div>
     </template>
-    <p class="text-[11px] text-slate-500 pt-1">How it works: every Bovada line for today (moneyline, puck lines and totals, main and alternate), one leg per game, every 2-, 3- and 4-game combination priced between -145 and -120. Ranked by the model's chance to hit; each option uses a different set of games. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
+    <p class="text-[11px] text-slate-500 pt-1">How it works: every Bovada line for today (moneyline, puck lines and totals, main and alternate), one leg per game, every 2- to 5-game combination priced between -145 and -120. Ranked by the model's chance to hit; each option uses a different set of games. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
   </div>
 
   <!-- ============ model ============ -->
@@ -441,11 +441,11 @@ function algo(){return{
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
   board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, bovada:{}, model:{}, status:{}, invites:[], jobMsg:'',
 
-  tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'parlays',label:'Parlays'},{key:'bovada',label:'Bovada -130'},{key:'model',label:'Model'}];
+  tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'parlays',label:'Parlays'},{key:'bovada',label:'Ladder'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
-  tabTitle(){ return {board:'Board',picks:'Paper picks',parlays:'Parlays',bovada:'Bovada -130',model:'Model',admin:'Admin'}[this.tab] },
+  tabTitle(){ return {board:'Board',picks:'Paper picks',parlays:'Parlays',bovada:'Ladder',model:'Model',admin:'Admin'}[this.tab] },
   subtitle(){ return {board:'Today\'s games, model vs market at 2 PM PT',picks:'Game-day picks, graded against the close',parlays:'Best chance to hit, 3 to 8 legs',
-    bovada:'Most reliable 2-4 leg parlay near -130',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
+    bovada:'Most likely way to about -130 at Bovada (2-5 legs)',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
   glossary(){
     if(this.tab==='board') return [
       {term:'model / market',def:'Probability of the listed selection. Market is the median across books with the bookmaker margin removed.'},

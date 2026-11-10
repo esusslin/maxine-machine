@@ -225,7 +225,7 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
     if bovada_feed:
         try:
             bov, credits = _bovada(con, snap["path"], fx, p_ml, prices, credits)
-        except Exception as e:  # noqa: BLE001 — the Bovada tab must never break the picks run
+        except Exception as e:  # noqa: BLE001 — the Ladder tab must never break the picks run
             bov["error"] = f"{type(e).__name__}: {e}"
     return {"status": status, "credits_remaining": credits, "board": board, "picks": picks, "parlays": parlay_list,
             "bovada": bov}
