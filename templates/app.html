@@ -320,7 +320,7 @@
   <!-- ============ ladder ============ -->
   <div x-show="tab==='ladder'" class="px-4 space-y-2">
     <p class="text-[11px] text-slate-500" x-show="ladder.updated_at"
-       x-text="'Prices as of '+(ladder.priced_at?new Date(ladder.priced_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' ('+ago(ladder.priced_at)+')':ago(ladder.updated_at))+' · '+(ladder.shared_lines||0)+' shared lines (of '+(ladder.lines||0)+') from '+(ladder.books||[]).length+' books in '+(ladder.games||0)+' games · priced at '+(ladder.bet_books||[]).map(bookName).join(' or ')+' · target '+((ladder.target||[-140,-120])[0])+' to '+((ladder.target||[-140,-120])[1])"></p>
+       x-text="'Prices as of '+(ladder.priced_at?new Date(ladder.priced_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' ('+ago(ladder.priced_at)+')':ago(ladder.updated_at))+' · '+(ladder.shared_lines||0)+' shared lines (of '+(ladder.lines||0)+') from '+(ladder.books||[]).length+' books in '+(ladder.games||0)+' games · priced at '+(ladder.bet_books||[]).map(bookName).join(' and ')+' · target '+((ladder.target||[-140,-120])[0])+' to '+((ladder.target||[-140,-120])[1])"></p>
     <div class="flex items-center gap-2" x-show="user.role==='admin'">
       <button @click="refreshLadder()" class="py-1.5 px-3 rounded border border-slate-600 text-xs" :disabled="ladderBusy"
               x-text="ladderBusy ? 'Refreshing…' : 'Refresh prices now'"></button>
@@ -332,21 +332,20 @@
       <div class="card p-3" :class="o.rank===1 ? 'tierA' : 'tierC'">
         <div class="flex items-baseline justify-between">
           <p class="text-sm font-semibold" x-text="['','Best','2nd best','3rd best'][o.rank]+' · '+o.legs_n+' legs'"></p>
-          <p class="text-sm" x-text="(o.american>0?'+':'')+o.american+' at '+bookName(o.book)"></p>
+          <p class="text-sm" x-text="Object.entries(o.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b)).join(' · ')"></p>
         </div>
         <p class="text-[12px] text-slate-400"
            x-text="'Chance to hit: '+pct(o.p_model)+' (model alone '+pct(o.p_model_only)+') · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value'+(o.p_book==null?'':' · the book\'s own odds (no margin): '+pct(o.p_book))"></p>
-        <p class="text-[11px] text-slate-500 mb-2" x-show="Object.keys(o.elsewhere||{}).length"
-           x-text="'Same legs elsewhere: '+Object.entries(o.elsewhere||{}).map(([b,a])=>(a>0?'+':'')+a+' at '+bookName(b)).join(', ')"></p>
+        <p class="text-[11px] text-slate-500 mb-2" x-text="'Inside the window at both books. Chance, break-even and value at the better price ('+bookName(o.book)+').'"></p>
         <template x-for="l in o.legs" :key="l.game_id">
           <div class="py-1 border-t border-slate-800 flex justify-between gap-2">
             <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home+' '+when(l.start_utc)"></span></p>
-            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="(l.american>0?'+':'')+l.american+' · chance '+pct(l.p_model,0)+' (model '+pct(l.p_model_only,0)+', market '+pct(l.p_market,0)+') · '+l.books_offering+' books'"></p>
+            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="Object.entries(l.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b).slice(0,3)).join(' / ')+' · chance '+pct(l.p_model,0)+' (model '+pct(l.p_model_only,0)+', market '+pct(l.p_market,0)+') · '+l.books_offering+' books'"></p>
           </div>
         </template>
       </div>
     </template>
-    <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. For Bovada and for DraftKings separately: one leg per game, every 2- to 5-game combination priced between -140 and -120 at that book. Ranked by chance to hit; each option uses a different set of games. Each leg's chance blends the model with the market by leg type: puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
+    <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. One leg per game, every 2- to 5-game combination priced between -140 and -120 at both Bovada and DraftKings with the same legs. Ranked by chance to hit; each option uses a different set of games. Each leg's chance blends the model with the market by leg type: puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
   </div>
 
   <!-- ============ model ============ -->
@@ -497,7 +496,7 @@ function algo(){return{
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
   tabTitle(){ return {board:'Board',picks:'Paper picks',parlays:'Parlays',ladder:'Ladder',model:'Model',admin:'Admin'}[this.tab] },
   subtitle(){ return {board:'Today\'s games, model vs market at 2 PM PT',picks:'Game-day picks, graded against the close',parlays:'Best chance to hit, 3 to 8 legs',
-    ladder:'Closest thing to a lock at -120 to -140, Bovada or DraftKings (2-5 legs)',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
+    ladder:'Closest thing to a lock at -120 to -140 at both Bovada and DraftKings (2-5 legs)',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
   glossary(){
     if(this.tab==='board') return [
       {term:'model / market',def:'Probability of the listed selection. Market is the median across books with the bookmaker margin removed.'},

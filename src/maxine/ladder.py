@@ -9,10 +9,10 @@
    score grid, calibrated per line) blended with the market by leg type (blend.py: puck line underdog 60%
    model, moneyline 40%, puck line favourite 25%, totals 20%). Market = median no-margin chance of that exact
    line across the books listing both sides; if none does, 1/price less a 5% margin.
-4. For each book you bet at (BET_BOOKS): one leg per game, every 2- to 5-game combination whose combined price
-   at that book is between TARGET_LONG and TARGET_SHORT (-120 to -140); exact search with pruning.
-5. Options 1-3: the highest chance to hit across those books, each on a different set of games. Each option
-   also shows the price of the same legs at the other bet books that offer them all.
+4. One leg per game, every 2- to 5-game combination whose combined price is between TARGET_LONG and
+   TARGET_SHORT (-120 to -140) at EVERY book in BET_BOOKS (Bovada and DraftKings), with the same legs at
+   each; exact search with pruning.
+5. Options 1-3: the highest chance to hit, each on a different set of games, with the price at both books.
 At a near-fixed price, the highest chance to hit is also the best value.
 """
 from __future__ import annotations
@@ -114,23 +114,52 @@ def legs(payload: dict, fixtures: pd.DataFrame, p_ml: dict, prices: dict, line_c
     return df.reset_index(drop=True)
 
 
-def _frontier(g: pd.DataFrame, max_price: float) -> list:
-    """Legs worth considering in one game at one book: no other leg pays more AND is more likely."""
-    g = g[g["price"] < max_price].sort_values(["price", "p_use"], ascending=[False, False])
-    keep, best_p = [], -1.0
-    for r in g.itertuples():
-        if r.p_use > best_p:
-            keep.append(r)
-            best_p = r.p_use
-    return keep
+def _joint_legs(shared: pd.DataFrame, books) -> pd.DataFrame:
+    """One row per (game, selection) offered by every book in `books`, with each book's price."""
+    rows = []
+    for (gid, sel), g in shared.groupby(["game_id", "selection"]):
+        by_book = {r.book: r for r in g.itertuples()}
+        if not all(b in by_book for b in books):
+            continue
+        r0 = by_book[books[0]]
+        rows.append({"game_id": gid, "selection": sel, "home": r0.home, "away": r0.away, "start_utc": r0.start_utc,
+                     "kind": r0.kind, "p_use": r0.p_use, "p_model": r0.p_model, "p_market": r0.p_market,
+                     "books_offering": int(r0.books_offering),
+                     "prices": tuple(float(by_book[b].price) for b in books),
+                     "p_books": tuple(None if by_book[b].p_book is None or pd.isna(by_book[b].p_book)
+                                      else float(by_book[b].p_book) for b in books)})
+    return pd.DataFrame(rows)
 
 
-def _search_book(legs_df: pd.DataFrame, lo: float, hi: float, sizes, options: int) -> list[tuple]:
-    """Top `options` (p, combo, price) at one book, each on a different set of games."""
-    by_game = {gid: sorted(_frontier(g, hi), key=lambda l: -l.p_use) for gid, g in legs_df.groupby("game_id")}
+def _frontier(legs: list, hi: float) -> list:
+    """Legs worth considering in one game: drop any leg another leg beats on chance AND on price at every book."""
+    legs = [l for l in legs if all(p < hi for p in l.prices)]
+    keep = []
+    for l in legs:
+        dominated = any(o is not l and o.p_use >= l.p_use and all(a >= b for a, b in zip(o.prices, l.prices))
+                        and (o.p_use > l.p_use or any(a > b for a, b in zip(o.prices, l.prices)))
+                        for o in legs)
+        if not dominated:
+            keep.append(l)
+    return sorted(keep, key=lambda l: -l.p_use)
+
+
+def search(legs_df: pd.DataFrame, bet_books=BET_BOOKS, short: int = TARGET_SHORT, long: int = TARGET_LONG,
+           sizes=SIZES, options: int = OPTIONS) -> list[dict]:
+    """Top `options` parlays (each on a different set of games) whose combined price is inside the window at
+    EVERY book in `bet_books`, ranked by chance to hit. Exact search with branch-and-bound pruning."""
+    if legs_df is None or legs_df.empty:
+        return []
+    books = tuple(bet_books)
+    lo, hi = american_to_decimal(short), american_to_decimal(long)      # e.g. 1.714 .. 1.833
+    joint = _joint_legs(legs_df[legs_df["shared"]], books)
+    if joint.empty:
+        return []
+    by_game = {gid: _frontier(list(g.itertuples()), hi) for gid, g in joint.groupby("game_id")}
     by_game = {k: v for k, v in by_game.items() if v}
     games_all = sorted(by_game, key=lambda g: -by_game[g][0].p_use)   # likeliest games first: good sets early
-    top: list[tuple] = []
+    nb = len(books)
+    top: list[tuple] = []                                              # (p, combo, prices) best per game set
 
     def threshold() -> float:
         return top[-1][0] if len(top) >= options else 0.0
@@ -142,74 +171,48 @@ def _search_book(legs_df: pd.DataFrame, lo: float, hi: float, sizes, options: in
             if math.prod(max_p) <= threshold():
                 continue                                               # this set cannot reach the top
             rest_p = [math.prod(max_p[i:]) for i in range(n + 1)]
-            rest_lo = [math.prod(min(x.price for x in l) for l in ls[i:]) for i in range(n + 1)]
-            rest_hi = [math.prod(max(x.price for x in l) for l in ls[i:]) for i in range(n + 1)]
+            rest_lo = [[math.prod(min(x.prices[b] for x in l) for l in ls[i:]) for b in range(nb)] for i in range(n + 1)]
+            rest_hi = [[math.prod(max(x.prices[b] for x in l) for l in ls[i:]) for b in range(nb)] for i in range(n + 1)]
             best = [0.0, None, None]
 
-            def dfs(i, p, price, chosen):
+            def dfs(i, p, prices, chosen):
                 if i == n:
-                    if lo <= price <= hi and p > best[0]:
-                        best[:] = [p, tuple(chosen), price]
+                    if all(lo <= x <= hi for x in prices) and p > best[0]:
+                        best[:] = [p, tuple(chosen), tuple(prices)]
                     return
                 for leg in ls[i]:                                     # sorted by chance, highest first
                     p2 = p * leg.p_use
                     if p2 * rest_p[i + 1] <= max(best[0], threshold()):
                         break                                          # every later leg is less likely
-                    pr2 = price * leg.price
-                    if pr2 * rest_lo[i + 1] > hi or pr2 * rest_hi[i + 1] < lo:
-                        continue                                       # price can no longer land in the window
+                    pr2 = [a * b for a, b in zip(prices, leg.prices)]
+                    if any(pr2[b] * rest_lo[i + 1][b] > hi or pr2[b] * rest_hi[i + 1][b] < lo for b in range(nb)):
+                        continue                                       # some book can no longer land in the window
                     chosen.append(leg)
                     dfs(i + 1, p2, pr2, chosen)
                     chosen.pop()
 
-            dfs(0, 1.0, 1.0, [])
+            dfs(0, 1.0, [1.0] * nb, [])
             if best[1] is not None:
                 top.append(tuple(best))
                 top.sort(key=lambda t: -t[0])
                 del top[options:]
-    return top
-
-
-def search(legs_df: pd.DataFrame, bet_books=BET_BOOKS, short: int = TARGET_SHORT, long: int = TARGET_LONG,
-           sizes=SIZES, options: int = OPTIONS) -> list[dict]:
-    if legs_df is None or legs_df.empty:
-        return []
-    lo, hi = american_to_decimal(short), american_to_decimal(long)      # e.g. 1.690 .. 1.833
-    shared = legs_df[legs_df["shared"]]
-    found = []
-    for book in bet_books:
-        for p, combo, price in _search_book(shared[shared["book"] == book], lo, hi, sizes, options):
-            found.append((p, combo, price, book))
-    # one option per set of games: the book where that set is most likely within the window
-    best_by_set = {}
-    for p, combo, price, book in found:
-        key = tuple(sorted(l.game_id for l in combo))
-        if p > best_by_set.get(key, (0,))[0]:
-            best_by_set[key] = (p, combo, price, book)
-    ranked = sorted(best_by_set.values(), key=lambda t: -t[0])[:options]
-    price_at = {(r.book, r.game_id, r.selection): r.price for r in shared.itertuples()}
     out = []
-    for rank, (p, combo, price, book) in enumerate(ranked, 1):
-        p_book = [None if l.p_book is None or pd.isna(l.p_book) else float(l.p_book) for l in combo]
-        elsewhere = {}
-        for other in bet_books:
-            if other == book:
-                continue
-            ps = [price_at.get((other, l.game_id, l.selection)) for l in combo]
-            if all(ps):
-                elsewhere[other] = decimal_to_american(math.prod(ps))
+    for rank, (p, combo, prices) in enumerate(top, 1):
+        b = max(range(nb), key=lambda i: prices[i])                    # the book that pays more
+        p_book = [l.p_books[b] for l in combo]
         out.append({
-            "rank": rank, "book": book, "legs_n": len(combo), "price": price, "american": decimal_to_american(price),
+            "rank": rank, "book": books[b], "legs_n": len(combo), "price": prices[b],
+            "american": decimal_to_american(prices[b]),
+            "prices": {bk: decimal_to_american(x) for bk, x in zip(books, prices)},
             "p_model": p, "p_model_only": math.prod(l.p_model for l in combo),
-            "breakeven": 1 / price, "ev": p * price - 1,
+            "breakeven": 1 / prices[b], "ev": p * prices[b] - 1,
             "p_book": math.prod(p_book) if all(x is not None for x in p_book) else None,
-            "elsewhere": elsewhere,
             "legs": [{"game_id": int(l.game_id), "home": l.home, "away": l.away, "start_utc": str(l.start_utc),
-                      "kind": l.kind, "selection": l.selection, "price": float(l.price),
-                      "american": decimal_to_american(l.price), "p_model": float(l.p_use),
-                      "p_model_only": float(l.p_model), "p_market": float(l.p_market),
-                      "books_offering": int(l.books_offering),
-                      "p_book": None if l.p_book is None or pd.isna(l.p_book) else float(l.p_book)}
+                      "kind": l.kind, "selection": l.selection,
+                      "prices": {bk: decimal_to_american(x) for bk, x in zip(books, l.prices)},
+                      "price": float(l.prices[b]), "american": decimal_to_american(l.prices[b]),
+                      "p_model": float(l.p_use), "p_model_only": float(l.p_model), "p_market": float(l.p_market),
+                      "books_offering": int(l.books_offering)}
                      for l in combo],
         })
     return out

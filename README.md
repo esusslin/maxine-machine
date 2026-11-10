@@ -137,7 +137,7 @@ The best available price and its book are recorded.
 5. Price: the single book that offers every leg at the best combined price; if none has them all, the best
    price per leg, marked "mixed books".
 
-### 10. Ladder (closest thing to a lock at −120 to −140, at Bovada or DraftKings)
+### 10. Ladder (closest thing to a lock at −120 to −140 at both Bovada and DraftKings)
 
 1. Main and alternate moneyline, puck lines and totals for today's games from six books: Bovada, DraftKings,
    FanDuel, BetMGM, Caesars, ESPN Bet. One request per game; up to 10 books cost the same as one (about 5
@@ -147,10 +147,10 @@ The best available price and its book are recorded.
 3. Chance of each leg: moneyline from the win model; puck lines and totals from the goal model's score grid,
    **calibrated line by line** on past results (the grid underrates 3+ goal margins, so e.g. +2.5 is pulled
    down from 87% to about 82%), then **blended with the market** by leg type as in the Parlays tab.
-4. For Bovada and for DraftKings separately (a parlay is placed at one book): one leg per game, every 2- to
-   5-game combination whose combined price at that book is between −140 and −120. Exact search with pruning.
-5. **Best, 2nd best, 3rd best** = highest chance to hit across both books, each on a different set of games,
-   with the price of the same legs at the other book when it has them all. At a near-fixed price the highest
+4. One leg per game, every 2- to 5-game combination whose combined price is between −140 and −120 at
+   **both** Bovada and DraftKings, with the same legs at each. Exact search with pruning.
+5. **Best, 2nd best, 3rd best** = highest chance to hit, each on a different set of games, shown with the
+   price at both books. At a near-fixed price the highest
    chance is also the best value. Each shows chance to hit, break-even (54.5% at −120, 58.3% at −140) and expected value.
 
 ### 11. Tracking

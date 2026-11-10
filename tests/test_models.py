@@ -118,7 +118,7 @@ def _ladder_payload():
                 {"name": away, "price": alt, "point": 2.5}, {"name": home, "price": 3.9, "point": -2.5},
                 {"name": away, "price": 1.55, "point": 1.5}, {"name": home, "price": 2.45, "point": -1.5}]},
             {"key": "alternate_totals", "outcomes": totals}]}
-    books = [book("bovada", 1.20, extra_total=True), book("draftkings", 1.24), book("fanduel", 1.23)]
+    books = [book("bovada", 1.20, extra_total=True), book("draftkings", 1.21), book("fanduel", 1.23)]
     games = [("New York Rangers", "Boston Bruins"), ("Dallas Stars", "St Louis Blues"),
              ("Tampa Bay Lightning", "Detroit Red Wings")]
     return {"events": [{"id": f"e{i}", "home_team": h, "away_team": a, "bookmakers": [b(h, a) for b in books]}
@@ -146,6 +146,8 @@ def test_ladder_shared_lines_and_search():
     assert 1 <= len(opts) <= 3
     assert [o["rank"] for o in opts] == list(range(1, len(opts) + 1))
     assert all(-140 <= o["american"] <= -120 and o["book"] in ("bovada", "draftkings") for o in opts)
+    assert all(set(o["prices"]) == {"bovada", "draftkings"} and all(-140 <= a <= -120 for a in o["prices"].values())
+               for o in opts)                                                # inside the window at BOTH books
     assert len({tuple(sorted(l["game_id"] for l in o["legs"])) for o in opts}) == len(opts)
     assert opts == sorted(opts, key=lambda o: -o["p_model"])
     assert all("Under 9.5" not in [l["selection"] for l in o["legs"]] for o in opts)
