@@ -135,17 +135,21 @@ The best available price and its book are recorded.
 5. Price: the single book that offers every leg at the best combined price; if none has them all, the best
    price per leg, marked "mixed books".
 
-### 10. Ladder (most likely way to about −130 at Bovada)
+### 10. Ladder (most likely way to about −130, at Bovada or DraftKings)
 
-1. Every Bovada line for today's games, one request per game: moneyline, main and alternate puck lines,
-   main and alternate totals (about 5 credits a game). Whole-number lines are skipped (they can push).
-2. Chance of each leg: moneyline from the win model; puck lines and totals from the goal model's score grid,
+1. Main and alternate moneyline, puck lines and totals for today's games from six books: Bovada, DraftKings,
+   FanDuel, BetMGM, Caesars, ESPN Bet. One request per game; up to 10 books cost the same as one (about 5
+   credits a game). Whole-number lines are skipped (they can push).
+2. **Shared lines only:** a line is used only if 3+ books offer it and at least half of the books quoting that
+   game do. One-book lines (e.g. a 9.5 total) are dropped.
+3. Chance of each leg: moneyline from the win model; puck lines and totals from the goal model's score grid,
    **calibrated line by line** on past results (the grid underrates 3+ goal margins, so e.g. +2.5 is pulled
    down from 87% to about 82%).
-3. One leg per game; every 2- to 5-game combination whose combined Bovada price is between −145 and −120.
-4. **Best, 2nd best, 3rd best** = highest chance to hit, each on a different set of games. At a near-fixed
-   price the highest chance is also the best value. Each shows chance to hit, break-even (−130 ≈ 56.5%) and
-   expected value.
+4. For Bovada and for DraftKings separately (a parlay is placed at one book): one leg per game, every 2- to
+   5-game combination whose combined price at that book is between −145 and −120. Exact search with pruning.
+5. **Best, 2nd best, 3rd best** = highest chance to hit across both books, each on a different set of games,
+   with the price of the same legs at the other book when it has them all. At a near-fixed price the highest
+   chance is also the best value. Each shows chance to hit, break-even (−130 ≈ 56.5%) and expected value.
 
 ### 11. Tracking
 
@@ -183,7 +187,7 @@ zones, Pinnacle as a sharp anchor, a confirmed-starter feed, anchoring the goal 
 | every 15 min, 9 AM–8:45 PM | closing prices for picks about to start (only spends credits when one is due) |
 | 3:30 AM | results, xG, grade picks |
 
-**Admin → Run full formula (today's games)** runs the 2 PM job on demand (about 4 odds credits, plus about 5 per game for Bovada).
+**Admin → Run full formula (today's games)** runs the 2 PM job on demand (about 4 odds credits, plus about 5 per game for the Ladder).
 
 ---
 
@@ -224,7 +228,7 @@ src/maxine/
   live_markets.py  live odds -> no-margin market probabilities
   picks.py         the daily run: board and picks
   parlays.py       best-chance parlays
-  bovada.py        Ladder: most likely Bovada parlay near -130 (alternate lines)
+  ladder.py        Ladder: most likely parlay near -130 at Bovada or DraftKings (shared alternate lines)
   paper.py         paper bets: store, closing price, grade
   web/             jobs, auth, app database
 server.py          FastAPI app + scheduler

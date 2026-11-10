@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from maxine import bovada, features, goalies, live_markets, parlays
+from maxine import features, goalies, ladder, live_markets, parlays
 from maxine.config import DATA_DIR
 from maxine.ingest import nhl, odds
 from maxine.models import goals, winprob, xg
@@ -120,7 +120,7 @@ def _two_way_row(base: dict, market: str, mk, p_model_a: float) -> dict:
 
 
 def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bool = False,
-        reg3_feed: bool = True, today_only: bool = False, bovada_feed: bool = True) -> dict:
+        reg3_feed: bool = True, today_only: bool = False, ladder_feed: bool = True) -> dict:
     """today_only: price only today's games (Pacific date); the 2 p.m. game-day run uses this."""
     thresholds = dict(DEFAULT_MIN_EDGE)
     if isinstance(min_edge, (int, float)):
@@ -221,29 +221,33 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
             for rec in out.to_dict("records"):
                 fh.write(json.dumps(rec, default=str) + "\n")
     parlay_list = parlays.build(leg_in, live_markets.book_rows(snap["path"]))
-    bov = {"options": [], "legs": 0, "error": None}
-    if bovada_feed:
+    lad = {"options": [], "legs": 0, "error": None}
+    if ladder_feed:
         try:
-            bov, credits = _bovada(con, snap["path"], fx, p_ml, prices, credits)
+            lad, credits = _ladder(con, snap["path"], fx, p_ml, prices, credits)
         except Exception as e:  # noqa: BLE001 — the Ladder tab must never break the picks run
-            bov["error"] = f"{type(e).__name__}: {e}"
+            lad["error"] = f"{type(e).__name__}: {e}"
     return {"status": status, "credits_remaining": credits, "board": board, "picks": picks, "parlays": parlay_list,
-            "bovada": bov}
+            "ladder": lad}
 
 
-def _bovada(con, us_snapshot_path: str, fx: pd.DataFrame, p_ml: dict, prices: dict, credits):
-    """Bovada main + alternate lines for today's games -> the three best parlays near -130."""
+def _ladder(con, us_snapshot_path: str, fx: pd.DataFrame, p_ml: dict, prices: dict, credits):
+    """Main + alternate lines from several books for today's games -> the three best parlays near -130."""
     data = json.loads(open(us_snapshot_path).read())["data"]
     wanted = {(f.home, f.away) for f in fx.itertuples()}
     ids = [ev["id"] for ev in data
            if (ODDS_NAME_TO_NHL.get(ev["home_team"]), ODDS_NAME_TO_NHL.get(ev["away_team"])) in wanted]
     if not ids:
         return {"options": [], "legs": 0, "error": None}, credits
-    snap = odds.bovada_events(ids)
+    snap = odds.alt_lines(ids, ladder.LINE_BOOKS)
     payload = json.loads(open(snap["path"]).read())
-    lg = bovada.legs(payload, fx, p_ml, prices, goals.line_calibrators(con))
-    return ({"options": bovada.search(lg), "legs": int(len(lg)), "games": int(lg["game_id"].nunique()) if len(lg) else 0,
-             "target": [bovada.TARGET_SHORT, bovada.TARGET_LONG], "error": None},
+    lg = ladder.legs(payload, fx, p_ml, prices, goals.line_calibrators(con))
+    shared = lg[lg["shared"]] if len(lg) else lg
+    return ({"options": ladder.search(lg), "lines": int(len(lg)), "shared_lines": int(len(shared)),
+             "books": sorted(lg["book"].unique().tolist()) if len(lg) else [],
+             "games": int(lg["game_id"].nunique()) if len(lg) else 0, "bet_books": list(ladder.BET_BOOKS),
+             "shared_rule": f"offered by {ladder.SHARED_MIN_BOOKS}+ books and at least half of those quoting the game",
+             "target": [ladder.TARGET_SHORT, ladder.TARGET_LONG], "error": None},
             snap["credits_remaining"] or credits)
 
 

@@ -104,25 +104,28 @@ def test_parlays_one_leg_per_game_and_book_pricing():
     assert abs(four["p_model"] - 0.70 ** 4) < 1e-9
 
 
-def _bovada_payload():
-    def ev(home, away, eid, alt):
-        return {"id": eid, "home_team": home, "away_team": away, "bookmakers": [{"key": "bovada", "markets": [
+def _ladder_payload():
+    def book(key, alt, extra_total=False):
+        totals = [{"name": "Over", "price": 1.25, "point": 4.5}, {"name": "Under", "price": 3.8, "point": 4.5},
+                  {"name": "Over", "price": 1.9, "point": 6.0}]                     # whole number: skipped
+        if extra_total:
+            totals += [{"name": "Under", "price": 1.08, "point": 9.5}]               # one book only: not shared
+        return lambda home, away: {"key": key, "markets": [
             {"key": "h2h", "outcomes": [{"name": home, "price": 1.70}, {"name": away, "price": 2.20}]},
             {"key": "alternate_spreads", "outcomes": [
                 {"name": away, "price": alt, "point": 2.5}, {"name": home, "price": 3.9, "point": -2.5},
                 {"name": away, "price": 1.55, "point": 1.5}, {"name": home, "price": 2.45, "point": -1.5}]},
-            {"key": "alternate_totals", "outcomes": [
-                {"name": "Over", "price": 1.25, "point": 4.5}, {"name": "Under", "price": 3.8, "point": 4.5},
-                {"name": "Over", "price": 1.9, "point": 6.0}]},   # whole number: skipped
-        ]}]}
-    return {"events": [ev("New York Rangers", "Boston Bruins", "e1", 1.22),
-                       ev("Dallas Stars", "St Louis Blues", "e2", 1.25),
-                       ev("Tampa Bay Lightning", "Detroit Red Wings", "e3", 1.20)]}
+            {"key": "alternate_totals", "outcomes": totals}]}
+    books = [book("bovada", 1.22, extra_total=True), book("draftkings", 1.24), book("fanduel", 1.23)]
+    games = [("New York Rangers", "Boston Bruins"), ("Dallas Stars", "St Louis Blues"),
+             ("Tampa Bay Lightning", "Detroit Red Wings")]
+    return {"events": [{"id": f"e{i}", "home_team": h, "away_team": a, "bookmakers": [b(h, a) for b in books]}
+                       for i, (h, a) in enumerate(games)]}
 
 
-def test_bovada_legs_and_search():
+def test_ladder_shared_lines_and_search():
     import pandas as pd
-    from maxine import bovada
+    from maxine import ladder
     from maxine.models.goals import GoalModel, price
     t = pd.Timestamp("2026-11-10T00:00Z")
     fx = pd.DataFrame([{"game_id": 1, "home": "NYR", "away": "BOS", "start_utc": t},
@@ -131,16 +134,30 @@ def test_bovada_legs_and_search():
     gm = GoalModel(None, None, 1.37, 0.36, 0.0, 0.9)
     prices = {g: price(gm, 3.1, 2.9) for g in (1, 2, 3)}
     cals = {("total", 5.5): (0.0, 1.0), ("spread", 1.5): (0.0, 1.0)}
-    lg = bovada.legs(_bovada_payload(), fx, {1: 0.55, 2: 0.55, 3: 0.55}, prices, cals)
+    lg = ladder.legs(_ladder_payload(), fx, {1: 0.55, 2: 0.55, 3: 0.55}, prices, cals)
     assert not (lg["line"] % 1 == 0).loc[lg["kind"] != "moneyline"].any()     # Over 6.0 skipped
-    assert set(lg[lg["game_id"] == 1]["selection"]) >= {"BOS +2.5", "NYR -2.5", "Over 4.5", "NYR to win"}
-    pb = lg[(lg["game_id"] == 1) & (lg["selection"] == "BOS +2.5")]["p_book"].iloc[0]
-    assert abs(pb - (1 / 1.22) / (1 / 1.22 + 1 / 3.9)) < 1e-9                  # paired with NYR -2.5
-    opts = bovada.search(lg)
+    assert not lg[lg["selection"] == "Under 9.5"]["shared"].any()              # only one book has it
+    assert lg[lg["selection"] == "BOS +2.5"]["shared"].all()
+    pb = lg[(lg["book"] == "bovada") & (lg["game_id"] == 1) & (lg["selection"] == "BOS +2.5")]["p_book"].iloc[0]
+    assert abs(pb - (1 / 1.22) / (1 / 1.22 + 1 / 3.9)) < 1e-9                  # paired with NYR -2.5, same book
+    opts = ladder.search(lg)
     assert 1 <= len(opts) <= 3
     assert [o["rank"] for o in opts] == list(range(1, len(opts) + 1))
-    assert all(-145 <= o["american"] <= -120 for o in opts)
+    assert all(-145 <= o["american"] <= -120 and o["book"] in ("bovada", "draftkings") for o in opts)
     assert len({tuple(sorted(l["game_id"] for l in o["legs"])) for o in opts}) == len(opts)
     assert opts == sorted(opts, key=lambda o: -o["p_model"])
+    assert all("Under 9.5" not in [l["selection"] for l in o["legs"]] for o in opts)
     for o in opts:
         assert len({l["game_id"] for l in o["legs"]}) == o["legs_n"]           # one leg per game
+
+
+def test_picks_breakdown_sides():
+    from maxine.evaluate import picks_breakdown
+    rows = [{"market": "totals", "side": "b", "line": 6.5, "result": "W", "profit": 0.9, "clv": 0.01, "p_market": 0.5},
+            {"market": "totals", "side": "a", "line": 6.5, "result": "L", "profit": -1.0, "clv": -0.01, "p_market": 0.5},
+            {"market": "spreads", "side": "b", "line": -1.5, "result": "W", "profit": 0.6, "clv": None, "p_market": 0.6},
+            {"market": "h2h", "side": "a", "line": 0, "result": None, "profit": None, "clv": None, "p_market": 0.6}]
+    b = picks_breakdown(rows)
+    assert b["totals|under"]["wins"] == 1 and b["totals|over"]["losses"] == 1
+    assert "spreads|underdog +1.5" in b                       # away +1.5 when the home line is -1.5
+    assert "h2h|favourite" not in b                            # ungraded picks are left out

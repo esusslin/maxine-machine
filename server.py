@@ -47,6 +47,7 @@ BOOT_TIME = datetime.now(timezone.utc)
 MANUAL = {
     "picks": jobs.run_picks,
     "closes": lambda: jobs.capture_closes(force=True),
+    "evaluate": jobs.evaluate_season,
     "results": jobs.results_and_grade,
     "bootstrap": jobs.bootstrap,
 }
@@ -292,9 +293,17 @@ def parlays_today(user: dict = Depends(auth.current_user)) -> dict:
     return data
 
 
-@app.get("/api/bovada")
-def bovada_parlays(user: dict = Depends(auth.current_user)) -> dict:
-    row = get_kv("bovada")
+@app.get("/api/evaluation")
+def evaluation(user: dict = Depends(auth.current_user)) -> dict:
+    row = get_kv("evaluation")
+    data = json.loads(row["value"]) if row else {}
+    data["updated_at"] = row["updated_at"] if row else None
+    return data
+
+
+@app.get("/api/ladder")
+def ladder_parlays(user: dict = Depends(auth.current_user)) -> dict:
+    row = get_kv("ladder")
     data = json.loads(row["value"]) if row else {"options": []}
     data["updated_at"] = row["updated_at"] if row else None
     return data

@@ -217,11 +217,14 @@ def _platt(p, y):
     return float(lr.intercept_[0]), float(lr.coef_[0][0])
 
 
-def calibrators(con) -> dict:
+def calibrators(con, before_season: int | None = None) -> dict:
     """Per-market Platt (a, b) for totals and spreads, fit on out-of-sample predictions for standard lines
-    against actual results (no odds needed, so it also runs on Railway). Pushes excluded."""
+    against actual results (no odds needed, so it also runs on Railway). Pushes excluded.
+    before_season: fit only on seasons before it (for an honest evaluation of that season)."""
     lam, models = walk_forward(con)
     g = game_outcomes(con).merge(lam, on=["game_id", "season"])
+    if before_season is not None:
+        g = g[g["season"] < before_season]
     tot_p, tot_y, spr_p, spr_y = [], [], [], []
     for r in g.itertuples():
         pr = price(models[int(r.season)], r.lam_h, r.lam_a)

@@ -209,6 +209,8 @@ def _load_odds_dir(con, subdir: str, kind: str, to_payload) -> dict:
             rows = []
             for key, _sig in chunk:
                 payload = to_payload(json.loads((RAW_DIR / subdir / key).read_text()))
+                if "data" not in payload:          # not an odds snapshot (e.g. per-game alternate-line files)
+                    continue
                 rows += parse_odds_snapshot(payload, league)
             _bulk(con, "odds_snapshots", ODDS_COLS, rows, distinct_on=ODDS_KEY,
                   replace_where="league = ? AND taken_at IN (SELECT DISTINCT taken_at FROM _bulk)",

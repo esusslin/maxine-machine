@@ -13,7 +13,7 @@ import logging
 import math
 from datetime import date
 
-from maxine import paper, picks
+from maxine import evaluate, paper, picks
 from maxine.ingest import betnhl, nhl
 from maxine.models import xg
 from maxine.warehouse import load
@@ -92,13 +92,28 @@ def run_picks() -> dict:
         set_kv("board", json.dumps({"records": records, "min_edges": settings.MIN_EDGES,
                                     "game_day_picks": settings.GAME_DAY_PICKS}))
         set_kv("parlays", json.dumps({"parlays": r.get("parlays", [])}, default=_clean))
-        set_kv("bovada", json.dumps(r.get("bovada") or {"options": []}, default=_clean))
+        set_kv("ladder", json.dumps(r.get("ladder") or {"options": []}, default=_clean))
         if r.get("credits_remaining") is not None:
             set_kv("odds_credits_remaining", str(r["credits_remaining"]))
         stored = paper.store_picks(r["picks"]) if not r["picks"].empty else 0
         ctx["rows_affected"] = stored
         ctx["note"] = json.dumps({"board": len(records), "new_picks": stored})
         return {"board": len(records), "new_picks": stored}
+
+
+def evaluate_season() -> dict:
+    """Model on every finished game this season + picks by side. Stored for the Picks tab."""
+    with job_run("evaluate") as ctx:
+        con = connect()
+        try:
+            model = evaluate.model_season(con, picks.CURRENT_SEASON)
+        finally:
+            con.close()
+        rows = [dict(r) for r in paper.query("SELECT * FROM paper_bets")]
+        report = {"model": model, "picks": evaluate.picks_breakdown(rows)}
+        set_kv("evaluation", json.dumps(report, default=_clean))
+        ctx["note"] = json.dumps({"games": model.get("moneyline", {}).get("games")})
+        return report
 
 
 def capture_closes(force: bool = False) -> dict:
@@ -128,5 +143,6 @@ JOBS = [
     (results_and_grade, "cron", dict(hour=3, minute=30), "results_and_grade"),
     (run_picks, "cron", dict(hour=14, minute=0), "picks_gameday"),
     (capture_closes, "cron", dict(hour="9-20", minute="*/15"), "capture_closes"),
+    (evaluate_season, "cron", dict(hour=4, minute=0), "evaluate"),
     (heartbeat, "interval", dict(minutes=60), "heartbeat"),
 ]

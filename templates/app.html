@@ -202,6 +202,49 @@
       Each bet is graded the morning after the game.
     </p>
 
+    <!-- season evaluation -->
+    <div class="card p-3 mb-3 text-[12px]">
+      <div class="flex items-baseline justify-between mb-1">
+        <p class="text-sm font-semibold">This season: model vs market on every game</p>
+        <p class="text-[11px] text-slate-500" x-text="evaluation.updated_at ? 'updated '+ago(evaluation.updated_at) : 'not run yet (4 AM daily, or Admin → Evaluate season)'"></p>
+      </div>
+      <p class="text-[11px] text-slate-500 mb-2">Every finished game, not just picks. The model for this season is fit only on earlier seasons. Market = the last odds we saved before puck drop. Log loss: lower is better.</p>
+      <table class="w-full" x-show="(evaluation.model||{}).moneyline">
+        <tr class="text-slate-500 text-[11px]"><td>Market</td><td class="text-right">Games</td><td class="text-right">Model's side right</td><td class="text-right">Market's side right</td><td class="text-right">Log loss model / market</td></tr>
+        <template x-for="m in [['moneyline','Winner (moneyline)'],['puck_line','Puck line'],['totals','Total']]" :key="m[0]">
+          <tr class="border-t border-slate-800" x-show="(evaluation.model||{})[m[0]]">
+            <td x-text="m[1]"></td>
+            <td class="text-right" x-text="((evaluation.model||{})[m[0]]||{}).games_with_market"></td>
+            <td class="text-right" x-text="pct(((evaluation.model||{})[m[0]]||{}).model_right_same_games)"></td>
+            <td class="text-right" x-text="pct(((evaluation.model||{})[m[0]]||{}).market_right)"></td>
+            <td class="text-right" x-text="(((evaluation.model||{})[m[0]]||{}).model_log_loss_same_games??'—')+' / '+(((evaluation.model||{})[m[0]]||{}).market_log_loss??'—')"></td>
+          </tr>
+        </template>
+      </table>
+      <p class="text-[11px] text-slate-500 mt-3 mb-1" x-show="(evaluation.model||{}).moneyline">When the model disagreed with the market by 3+ points, the side it leaned to won… (vs what the market expected)</p>
+      <table class="w-full" x-show="(evaluation.model||{}).moneyline">
+        <template x-for="row in leanRows()" :key="row.key">
+          <tr class="border-t border-slate-800">
+            <td x-text="row.label"></td>
+            <td class="text-right" x-text="row.n+' games'"></td>
+            <td class="text-right" x-text="pct(row.won)+' (market '+pct(row.exp)+')'"></td>
+            <td class="text-right" :class="row.won>row.exp ? 'text-emerald-400' : 'text-amber-300'" x-text="row.won==null?'':((row.won-row.exp>=0?'+':'')+((row.won-row.exp)*100).toFixed(1)+' pts')"></td>
+          </tr>
+        </template>
+      </table>
+      <p class="text-[11px] text-slate-500 mt-3 mb-1" x-show="Object.keys(evaluation.picks||{}).length">Graded picks by side</p>
+      <table class="w-full" x-show="Object.keys(evaluation.picks||{}).length">
+        <template x-for="(r,k) in (evaluation.picks||{})" :key="k">
+          <tr class="border-t border-slate-800">
+            <td x-text="marketLabel(r.market)+' · '+r.side"></td>
+            <td class="text-right" x-text="r.wins+'-'+r.losses+(r.pushes?'-'+r.pushes:'')"></td>
+            <td class="text-right" x-text="(r.units>0?'+':'')+r.units+'u'"></td>
+            <td class="text-right" x-text="'beat the close '+pct(r.beat_close_pct,0)"></td>
+          </tr>
+        </template>
+      </table>
+    </div>
+
     <div class="flex items-center justify-between mb-2">
       <p class="text-sm">Waiting on games <span class="text-slate-500" x-text="'('+openBets().length+')'"></span></p>
     </div>
@@ -274,18 +317,32 @@
     <p class="text-[11px] text-slate-500 pt-1">How they're built: one leg per game (same-game legs move together), only legs the model rates at least as likely as the market, the most likely leg from each game, then the most likely games first. Chance to hit multiplies the legs. Price is the best single book that has every leg. Leg numbers: price · model / market.</p>
   </div>
 
-  <!-- ============ bovada ============ -->
-  <div x-show="tab==='bovada'" class="px-4 space-y-2">
-    <p class="text-[11px] text-slate-500" x-show="bovada.updated_at"
-       x-text="'Built '+ago(bovada.updated_at)+' · '+(bovada.legs||0)+' Bovada lines in '+(bovada.games||0)+' games · target '+((bovada.target||[-145,-120])[0])+' to '+((bovada.target||[-145,-120])[1])"></p>
-    <p class="text-sm text-amber-300 card p-3" x-show="bovada.error" x-text="'Bovada lines could not be read: '+bovada.error"></p>
-    <p class="text-sm text-slate-500 card p-4" x-show="!(bovada.options||[]).length && !bovada.error">No parlay in the target range yet. Built with the 2:00 PM run, or Admin → Run full formula.</p>
-    <template x-for="o in (bovada.options||[])" :key="o.rank">
+  <!-- ============ ladder ============ -->
+  <div x-show="tab==='ladder'" class="px-4 space-y-2">
+    <p class="text-[11px] text-slate-500" x-show="ladder.updated_at"
+       x-text="'Built '+ago(ladder.updated_at)+' · '+(ladder.shared_lines||0)+' shared lines (of '+(ladder.lines||0)+') from '+(ladder.books||[]).length+' books in '+(ladder.games||0)+' games · priced at '+(ladder.bet_books||[]).map(bookName).join(' or ')+' · target '+((ladder.target||[-145,-120])[0])+' to '+((ladder.target||[-145,-120])[1])"></p>
+    <p class="text-sm text-amber-300 card p-3" x-show="ladder.error" x-text="'Lines could not be read: '+ladder.error"></p>
+    <p class="text-sm text-slate-500 card p-4" x-show="!(ladder.options||[]).length && !ladder.error">No parlay in the target range yet. Built with the 2:00 PM run, or Admin → Run full formula.</p>
+    <template x-for="o in (ladder.options||[])" :key="o.rank">
       <div class="card p-3" :class="o.rank===1 ? 'tierA' : 'tierC'">
         <div class="flex items-baseline justify-between">
           <p class="text-sm font-semibold" x-text="['','Best','2nd best','3rd best'][o.rank]+' · '+o.legs_n+' legs'"></p>
-          <p class="text-sm" x-text="(o.american>0?'+':'')+o.american+' at Bovada'"></p>
+          <p class="text-sm" x-text="(o.american>0?'+':'')+o.american+' at '+bookName(o.book)"></p>
         </div>
+        <p class="text-[12px] text-slate-400"
+           x-text="'Chance to hit: '+pct(o.p_model)+' · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value'+(o.p_book==null?'':' · the book\'s own odds (no margin): '+pct(o.p_book))"></p>
+        <p class="text-[11px] text-slate-500 mb-2" x-show="Object.keys(o.elsewhere||{}).length"
+           x-text="'Same legs elsewhere: '+Object.entries(o.elsewhere||{}).map(([b,a])=>(a>0?'+':'')+a+' at '+bookName(b)).join(', ')"></p>
+        <template x-for="l in o.legs" :key="l.game_id">
+          <div class="py-1 border-t border-slate-800 flex justify-between gap-2">
+            <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home+' '+when(l.start_utc)"></span></p>
+            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="(l.american>0?'+':'')+l.american+' · model '+pct(l.p_model,0)+' · '+l.books_offering+' books'"></p>
+          </div>
+        </template>
+      </div>
+    </template>
+    <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. For Bovada and for DraftKings separately: one leg per game, every 2- to 5-game combination priced between -145 and -120 at that book. Ranked by the model's chance to hit; each option uses a different set of games. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
+  </div>
         <p class="text-[12px] text-slate-400 mb-2"
            x-text="'Chance to hit: '+pct(o.p_model)+' · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value'+(o.p_book==null?'':' · Bovada\'s own odds (no margin): '+pct(o.p_book))"></p>
         <template x-for="l in o.legs" :key="l.game_id">
@@ -390,6 +447,7 @@
         <button @click="runJob('picks')" class="py-2 rounded bg-emerald-600 text-white text-xs" title="Pulls the latest NHL results, re-scores xG, refits every model (form, goalies, moneyline, goal model, calibration), pulls live odds and builds today's picks. Same as the 2 PM run. About 1 minute; 4 odds credits.">Run full formula (today's games)</button>
         <button @click="runJob('closes')" class="py-2 rounded border border-slate-600 text-xs">Capture closes (3 credits)</button>
         <button @click="runJob('results')" class="py-2 rounded border border-slate-600 text-xs">Results + grade</button>
+        <button @click="runJob('evaluate')" class="py-2 rounded border border-slate-600 text-xs">Evaluate season</button>
       </div>
       <p class="text-xs text-slate-400 mt-3" x-text="jobMsg"></p>
     </div>
@@ -439,13 +497,13 @@ function algo(){return{
   inviteCode:'', inviteValid:false, inviteReason:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
-  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, bovada:{}, model:{}, status:{}, invites:[], jobMsg:'',
+  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
 
-  tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'parlays',label:'Parlays'},{key:'bovada',label:'Ladder'},{key:'model',label:'Model'}];
+  tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'parlays',label:'Parlays'},{key:'ladder',label:'Ladder'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
-  tabTitle(){ return {board:'Board',picks:'Paper picks',parlays:'Parlays',bovada:'Ladder',model:'Model',admin:'Admin'}[this.tab] },
+  tabTitle(){ return {board:'Board',picks:'Paper picks',parlays:'Parlays',ladder:'Ladder',model:'Model',admin:'Admin'}[this.tab] },
   subtitle(){ return {board:'Today\'s games, model vs market at 2 PM PT',picks:'Game-day picks, graded against the close',parlays:'Best chance to hit, 3 to 8 legs',
-    bovada:'Most likely way to about -130 at Bovada (2-5 legs)',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
+    ladder:'Most likely way to about -130 at Bovada or DraftKings (2-5 legs)',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
   glossary(){
     if(this.tab==='board') return [
       {term:'model / market',def:'Probability of the listed selection. Market is the median across books with the bookmaker margin removed.'},
@@ -521,9 +579,9 @@ function algo(){return{
     this.user=await me.json();
     if(!this.profilePhone) this.profilePhone=this.user.phone||'';
     if(this.tab==='board') this.board=await this.get('/api/board');
-    if(this.tab==='picks'){ const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{}; this.paperByMarket=d.by_market||{} }
+    if(this.tab==='picks'){ this.evaluation=await this.get('/api/evaluation'); const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{}; this.paperByMarket=d.by_market||{} }
     if(this.tab==='parlays') this.parlays=await this.get('/api/parlays');
-    if(this.tab==='bovada') this.bovada=await this.get('/api/bovada');
+    if(this.tab==='ladder') this.ladder=await this.get('/api/ladder');
     if(this.tab==='model'){ this.model=await this.get('/api/model'); this.algo=await this.get('/api/algorithm') }
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }
     this.fresh=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -562,6 +620,14 @@ function algo(){return{
     if(b.market==='spreads') return sel+' on the puck line';
     if(b.market==='reg3') return sel.startsWith('Tie') ? 'Tied after 60 minutes' : sel.replace(' in regulation','')+' to win in regulation (no overtime)';
     return sel;
+  },
+  leanRows(){
+    const m=this.evaluation.model||{}, out=[];
+    for(const [mk,label] of [['moneyline','Winner'],['puck_line','Puck line'],['totals','Total']]){
+      const L=(mk==='moneyline' ? (m[mk]||{}).leans_fav_dog : (m[mk]||{}).leans)||{};
+      for(const [side,v] of Object.entries(L)) out.push({key:mk+side,label:label+' · '+side,n:v.leans_3pts,won:v.won_3pts,exp:v.market_expected_3pts});
+    }
+    return out;
   },
   recordRows(){
     const out=[];
