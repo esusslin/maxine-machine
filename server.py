@@ -183,6 +183,16 @@ def login(body: LoginBody) -> dict:
             "user": {"id": user["id"], "username": user["username"], "role": user["role"]}}
 
 
+class SetupBody(BaseModel):
+    phone: str
+
+
+@app.post("/api/auth/setup")
+def first_time_setup(body: SetupBody) -> dict:
+    """Main-URL signup: find the open invite made for this phone; the page then asks for a password."""
+    return auth.open_invite_for_phone(body.phone)
+
+
 @app.get("/api/auth/invite/{code}")
 def check_invite(code: str) -> dict:
     return auth.invite_info(code)

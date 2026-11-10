@@ -81,3 +81,17 @@ def test_paper_store_dedupe_and_grade_all_markets():
     assert res[(98, "totals")] == ("P", 0.0)
     by = paper.summary()["by_market"]
     assert by["totals|early"]["pushes"] == 1
+
+
+def test_first_time_setup_from_main_url():
+    with TestClient(server.app) as c:
+        tok = c.post("/api/auth/login", json={"username": "admin", "password": "adminpass1"}).json()["token"]
+        h = {"Authorization": f"Bearer {tok}"}
+        assert c.post("/api/auth/setup", json={"phone": "415 555 0000"}).json() == {"status": "none"}
+        c.post("/api/admin/invites", headers=h, json={"name": "Maria Lopez", "phone": "415-555-0000"})
+        found = c.post("/api/auth/setup", json={"phone": "(415) 555-0000"}).json()
+        assert found["status"] == "found" and found["name"] == "Maria"
+        r = c.post("/api/auth/register", json={"invite": found["code"], "password": "mariapass1"})
+        assert r.status_code == 200 and r.json()["user"]["username"] == "maria.lopez"
+        assert c.post("/api/auth/setup", json={"phone": "4155550000"}).json() == {"status": "has_account"}
+        assert c.post("/api/auth/login", json={"username": "4155550000", "password": "mariapass1"}).status_code == 200

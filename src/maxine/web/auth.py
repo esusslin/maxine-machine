@@ -176,6 +176,20 @@ def create_invite(created_by: int, note: str = "", name: str | None = None, phon
     return {"code": code, "expires_at": expires, "note": note, "name": name, "phone": phone}
 
 
+def open_invite_for_phone(raw: str) -> dict:
+    """First-time setup from the main URL: the newest open invite created for this phone number.
+    Returns {status: 'found'|'has_account'|'none', code?, name?}."""
+    d = _digits10(raw)
+    if not d:
+        return {"status": "none"}
+    if get_user_by_phone(raw):
+        return {"status": "has_account"}
+    for r in query("SELECT code, name, phone FROM invites WHERE phone IS NOT NULL ORDER BY created_at DESC"):
+        if _digits10(r["phone"]) == d and check_invite(r["code"])[0]:
+            return {"status": "found", "code": r["code"], "name": (r["name"] or "").split()[0] or None}
+    return {"status": "none"}
+
+
 def invite_info(code: str) -> dict:
     """What the invite page may show: validity and the first name (never the phone)."""
     ok, reason = check_invite(code)

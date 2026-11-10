@@ -63,8 +63,20 @@
     </div>
   </template>
 
+  <!-- first-time setup from the main URL: phone -> invite -> password -->
+  <template x-if="!resetToken && !forgot && setup && !inviteCode">
+    <div>
+      <p class="text-xs text-slate-400 mb-3">Enter the mobile number you were invited with.</p>
+      <input x-model="setupPhone" type="tel" placeholder="mobile number" autocomplete="tel"
+             class="w-full mb-4 px-3 py-3 rounded bg-slate-800/60 border border-slate-700 text-base">
+      <button @click="findInvite()" class="w-full py-3 rounded bg-emerald-600 text-white font-medium">Continue</button>
+      <p class="text-amber-300 text-sm mt-3" x-text="setupMsg"></p>
+      <button @click="setup=false; setupMsg=''" class="text-xs text-slate-500 mt-4">Back to sign in</button>
+    </div>
+  </template>
+
   <!-- login / register -->
-  <template x-if="!resetToken && !forgot">
+  <template x-if="!resetToken && !forgot && (!setup || inviteCode)">
     <div>
       <input x-show="!inviteCode || inviteNeedsUsername" x-model="form.username"
              :placeholder="inviteCode ? 'choose a username' : 'name or phone number'" autocapitalize="none" autocomplete="username"
@@ -80,8 +92,10 @@
               x-text="inviteCode ? 'Set password and sign in' : 'Sign in'"></button>
       <p class="text-emerald-300 text-sm mt-3" x-text="welcome"></p>
       <p class="text-red-400 text-sm mt-3" x-text="error"></p>
-      <button x-show="!inviteCode" @click="forgot=true"
-              class="text-xs text-slate-500 mt-4">Forgot password?</button>
+      <div class="flex justify-between mt-4" x-show="!inviteCode">
+        <button @click="setup=true; error=''" class="text-xs text-emerald-400">First time? Set up your account</button>
+        <button @click="forgot=true" class="text-xs text-slate-500">Forgot password?</button>
+      </div>
     </div>
   </template>
 </div>
@@ -572,7 +586,7 @@ function algo(){return{
   token:localStorage.getItem('maxine_token')||'', user:{}, tab:'board',
   form:{username:'',password:'',password2:'',phone:''}, error:'', fresh:'',
   inviteCode:'', inviteValid:false, inviteReason:'', inviteName:'', inviteNeedsUsername:false, welcome:'',
-  newInv:{name:'',phone:''}, lastInvite:null, members:[],
+  newInv:{name:'',phone:''}, lastInvite:null, members:[], setup:false, setupPhone:'', setupMsg:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
   board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, ladderBusy:false, lines:{games:[]}, slip:{}, myBusy:false, myMsg:'', evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
@@ -615,6 +629,15 @@ function algo(){return{
     const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.form)});
     if(!r.ok){this.error='Invalid username or password';return}
     const d=await r.json(); this.token=d.token; this.user=d.user; localStorage.setItem('maxine_token',d.token); await this.refresh();
+  },
+  async findInvite(){
+    this.setupMsg='';
+    const r=await(await fetch('/api/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({phone:this.setupPhone})})).json();
+    if(r.status==='found'){ this.inviteCode=r.code; this.inviteValid=true; this.inviteReason='ok';
+      this.inviteName=r.name||''; this.inviteNeedsUsername=false; this.form.username=''; }
+    else if(r.status==='has_account') this.setupMsg='You already have an account. Sign in with your phone number and password.';
+    else this.setupMsg='No invite for that number. Ask the person who invited you to add it.';
   },
   async register(){
     this.error='';
