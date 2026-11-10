@@ -101,7 +101,9 @@ def test_parlays_one_leg_per_game_and_book_pricing():
     four = out[1]
     assert all(l["selection"].endswith("+1.5") for l in four["legs"])
     assert four["book"] == "dk" and abs(four["price"] - 1.40 ** 4) < 1e-9
-    assert abs(four["p_model"] - 0.70 ** 4) < 1e-9
+    from maxine.blend import blend
+    assert abs(four["p_model_only"] - 0.70 ** 4) < 1e-9
+    assert abs(four["p_model"] - blend(0.70, 0.67, "spreads", 1.5) ** 4) < 1e-9     # away +1.5: underdog weight
 
 
 def _ladder_payload():
@@ -161,3 +163,15 @@ def test_picks_breakdown_sides():
     assert b["totals|under"]["wins"] == 1 and b["totals|over"]["losses"] == 1
     assert "spreads|underdog +1.5" in b                       # away +1.5 when the home line is -1.5
     assert "h2h|favourite" not in b                            # ungraded picks are left out
+
+
+def test_blend_weights_by_leg_type():
+    from maxine.blend import blend, leg_type
+    assert leg_type("puck line", 2.5) == leg_type("spreads", 1.5) == "puck line underdog"
+    assert leg_type("puck line", -1.5) == "puck line favourite"
+    assert leg_type("h2h") == "moneyline" and leg_type("totals") == "total"
+    # equal inputs stay put; otherwise the result sits between market and model, nearer the heavier weight
+    assert abs(blend(0.6, 0.6, "total") - 0.6) < 1e-12
+    dog, tot = blend(0.80, 0.70, "puck line", 2.5), blend(0.80, 0.70, "total")
+    assert 0.70 < tot < dog < 0.80 and dog > 0.75 > tot
+    assert blend(0.8, None, "total") == 0.8

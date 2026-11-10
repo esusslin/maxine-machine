@@ -129,6 +129,8 @@ The best available price and its book are recorded.
 1. Candidates: both sides of every game's moneyline, total and puck line (US books; regulation 3-way is
    left out because it is priced at European books).
 2. A leg qualifies only if the model rates it **at least as likely as the market** does.
+   Its chance is then **blended with the market by leg type** (`blend.py`): puck line underdog 60% model,
+   moneyline 40%, puck line favourite 25%, totals 20% (docs/experiments.md section 11).
 3. **One leg per game** (same-game legs are correlated): the qualifying leg with the highest model chance.
 4. The N-leg parlay = the N games whose best leg is most likely.
    **Chance to hit** = product of the leg chances.
@@ -144,7 +146,7 @@ The best available price and its book are recorded.
    game do. One-book lines (e.g. a 9.5 total) are dropped.
 3. Chance of each leg: moneyline from the win model; puck lines and totals from the goal model's score grid,
    **calibrated line by line** on past results (the grid underrates 3+ goal margins, so e.g. +2.5 is pulled
-   down from 87% to about 82%).
+   down from 87% to about 82%), then **blended with the market** by leg type as in the Parlays tab.
 4. For Bovada and for DraftKings separately (a parlay is placed at one book): one leg per game, every 2- to
    5-game combination whose combined price at that book is between −145 and −120. Exact search with pruning.
 5. **Best, 2nd best, 3rd best** = highest chance to hit across both books, each on a different set of games,

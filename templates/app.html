@@ -305,16 +305,16 @@
           <p class="text-sm" x-text="american(pl.price)+(pl.mixed_books?' (best price per leg, mixed books)':' at '+bookName(pl.book))"></p>
         </div>
         <p class="text-[12px] text-slate-400 mb-2"
-           x-text="'Chance to hit: '+pct(pl.p_model)+' (about 1 in '+Math.round(1/pl.p_model)+') · market '+pct(pl.p_market)+' · $10 pays $'+(10*pl.price).toFixed(0)"></p>
+           x-text="'Chance to hit: '+pct(pl.p_model)+' (about 1 in '+Math.round(1/pl.p_model)+') · model alone '+pct(pl.p_model_only)+' · market '+pct(pl.p_market)+' · $10 pays $'+(10*pl.price).toFixed(0)"></p>
         <template x-for="l in pl.legs" :key="l.game_id">
           <div class="py-1 border-t border-slate-800 flex justify-between gap-2">
             <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home+' '+when(l.start_utc)"></span></p>
-            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="american(l.price)+' · '+pct(l.p_model,0)+' / '+pct(l.p_market,0)"></p>
+            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="american(l.price)+' · chance '+pct(l.p_model,0)+' (model '+pct(l.p_model_only,0)+', market '+pct(l.p_market,0)+')'"></p>
           </div>
         </template>
       </div>
     </template>
-    <p class="text-[11px] text-slate-500 pt-1">How they're built: one leg per game (same-game legs move together), only legs the model rates at least as likely as the market, the most likely leg from each game, then the most likely games first. Chance to hit multiplies the legs. Price is the best single book that has every leg. Leg numbers: price · model / market.</p>
+    <p class="text-[11px] text-slate-500 pt-1">How they're built: one leg per game (same-game legs move together), only legs the model rates at least as likely as the market, the most likely leg from each game, then the most likely games first. Each leg's chance blends the model with the market by leg type: puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%. Chance to hit multiplies the legs. Price is the best single book that has every leg.</p>
   </div>
 
   <!-- ============ ladder ============ -->
@@ -330,30 +330,18 @@
           <p class="text-sm" x-text="(o.american>0?'+':'')+o.american+' at '+bookName(o.book)"></p>
         </div>
         <p class="text-[12px] text-slate-400"
-           x-text="'Chance to hit: '+pct(o.p_model)+' · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value'+(o.p_book==null?'':' · the book\'s own odds (no margin): '+pct(o.p_book))"></p>
+           x-text="'Chance to hit: '+pct(o.p_model)+' (model alone '+pct(o.p_model_only)+') · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value'+(o.p_book==null?'':' · the book\'s own odds (no margin): '+pct(o.p_book))"></p>
         <p class="text-[11px] text-slate-500 mb-2" x-show="Object.keys(o.elsewhere||{}).length"
            x-text="'Same legs elsewhere: '+Object.entries(o.elsewhere||{}).map(([b,a])=>(a>0?'+':'')+a+' at '+bookName(b)).join(', ')"></p>
         <template x-for="l in o.legs" :key="l.game_id">
           <div class="py-1 border-t border-slate-800 flex justify-between gap-2">
             <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home+' '+when(l.start_utc)"></span></p>
-            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="(l.american>0?'+':'')+l.american+' · model '+pct(l.p_model,0)+' · '+l.books_offering+' books'"></p>
+            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="(l.american>0?'+':'')+l.american+' · chance '+pct(l.p_model,0)+' (model '+pct(l.p_model_only,0)+', market '+pct(l.p_market,0)+') · '+l.books_offering+' books'"></p>
           </div>
         </template>
       </div>
     </template>
-    <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. For Bovada and for DraftKings separately: one leg per game, every 2- to 5-game combination priced between -145 and -120 at that book. Ranked by the model's chance to hit; each option uses a different set of games. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
-  </div>
-        <p class="text-[12px] text-slate-400 mb-2"
-           x-text="'Chance to hit: '+pct(o.p_model)+' · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value'+(o.p_book==null?'':' · Bovada\'s own odds (no margin): '+pct(o.p_book))"></p>
-        <template x-for="l in o.legs" :key="l.game_id">
-          <div class="py-1 border-t border-slate-800 flex justify-between gap-2">
-            <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home+' '+when(l.start_utc)"></span></p>
-            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="(l.american>0?'+':'')+l.american+' · model '+pct(l.p_model,0)"></p>
-          </div>
-        </template>
-      </div>
-    </template>
-    <p class="text-[11px] text-slate-500 pt-1">How it works: every Bovada line for today (moneyline, puck lines and totals, main and alternate), one leg per game, every 2- to 5-game combination priced between -145 and -120. Ranked by the model's chance to hit; each option uses a different set of games. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
+    <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. For Bovada and for DraftKings separately: one leg per game, every 2- to 5-game combination priced between -145 and -120 at that book. Ranked by chance to hit; each option uses a different set of games. Each leg's chance blends the model with the market by leg type: puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
   </div>
 
   <!-- ============ model ============ -->

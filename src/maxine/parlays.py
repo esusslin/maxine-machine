@@ -4,11 +4,12 @@
    Regulation 3-way is left out (European books; not parlayable with US books).
 2. A leg is eligible only if the model rates it at least as likely as the market does (model >= no-vig
    market probability): the model never pays a price it thinks is too short.
-3. One leg per game (legs from the same game are correlated), the eligible leg with the highest model
-   probability.
-4. An N-leg parlay = the N games whose best leg has the highest model probability.
-   Chance to hit = product of the leg probabilities (games are independent).
-5. Price: every book that offers all N legs at the same lines; the one with the highest combined price.
+3. Chance of each leg = model and market blended by leg type (blend.py: puck line underdog 60% model,
+   moneyline 40%, puck line favourite 25%, totals 20%).
+4. One leg per game (legs from the same game are correlated), the eligible leg with the highest blended chance.
+5. An N-leg parlay = the N games whose best leg has the highest blended chance.
+   Chance to hit = product of the leg chances (games are independent).
+6. Price: every book that offers all N legs at the same lines; the one with the highest combined price.
    If no single book has all legs, the product of the best price per leg is shown instead (marked mixed).
 """
 from __future__ import annotations
@@ -16,6 +17,8 @@ from __future__ import annotations
 import math
 
 import pandas as pd
+
+from maxine.blend import blend
 
 SIZES = range(3, 9)
 
@@ -35,8 +38,10 @@ def candidate_legs(inputs: list[dict]) -> pd.DataFrame:
         for side in ("a", "b"):
             pm = x["p_a"] if side == "a" else 1 - x["p_a"]
             pk = x["p_mkt_a"] if side == "a" else 1 - x["p_mkt_a"]
+            team_line = (x["line"] if side == "a" else -x["line"]) if x["market"] == "spreads" else 0.0
             rows.append({**{k: x[k] for k in ("game_id", "home", "away", "start_utc", "market", "line")},
                          "side": side, "p_model": pm, "p_market": pk,
+                         "p_blend": blend(pm, pk, x["market"], team_line),
                          "selection": _label(x["market"], side, x["home"], x["away"], x["line"])})
     return pd.DataFrame(rows)
 
@@ -45,8 +50,8 @@ def best_leg_per_game(legs: pd.DataFrame) -> pd.DataFrame:
     ok = legs[legs["p_model"] >= legs["p_market"]]
     if ok.empty:
         return ok
-    best = ok.loc[ok.groupby("game_id")["p_model"].idxmax()]
-    return best.sort_values("p_model", ascending=False).reset_index(drop=True)
+    best = ok.loc[ok.groupby("game_id")["p_blend"].idxmax()]
+    return best.sort_values("p_blend", ascending=False).reset_index(drop=True)
 
 
 def _book_price(books: pd.DataFrame, leg) -> pd.Series:
@@ -77,13 +82,14 @@ def build(inputs: list[dict], books: pd.DataFrame) -> list[dict]:
             books_used = [p.idxmax() if len(p) else None for p in pr]
             book, mixed = None, True
         price = math.prod(leg_prices)
-        p_hit = math.prod(top["p_model"])
+        p_hit = math.prod(top["p_blend"])
         out.append({
-            "legs_n": n, "p_model": p_hit, "p_market": math.prod(top["p_market"]),
+            "legs_n": n, "p_model": p_hit, "p_model_only": math.prod(top["p_model"]),
+            "p_market": math.prod(top["p_market"]),
             "price": price, "book": book, "mixed_books": mixed, "ev": p_hit * price - 1,
             "legs": [{"game_id": int(r.game_id), "home": r.home, "away": r.away, "start_utc": str(r.start_utc),
                       "market": r.market, "selection": r.selection, "line": float(r.line),
-                      "p_model": float(r.p_model), "p_market": float(r.p_market),
+                      "p_model": float(r.p_blend), "p_model_only": float(r.p_model), "p_market": float(r.p_market),
                       "price": lp, "book": bk}
                      for r, lp, bk in zip(top.itertuples(), leg_prices, books_used)],
         })

@@ -5,8 +5,10 @@
 2. Shared lines only: a line (game, market, side, number) is used only if at least SHARED_MIN_BOOKS books and
    at least SHARED_SHARE of the books quoting that game offer it. Exotic lines one book offers (e.g. a 9.5
    total) are dropped.
-3. Chance of each leg from our models: moneyline from the win model; puck lines and totals from the goal
-   model's score grid, calibrated per line (goals.line_calibrators).
+3. Chance of each leg: the model (moneyline from the win model; puck lines and totals from the goal model's
+   score grid, calibrated per line) blended with the market by leg type (blend.py: puck line underdog 60%
+   model, moneyline 40%, puck line favourite 25%, totals 20%). Market = median no-margin chance of that exact
+   line across the books listing both sides; if none does, 1/price less a 5% margin.
 4. For each book you bet at (BET_BOOKS): one leg per game, every 2- to 5-game combination whose combined price
    at that book is between TARGET_LONG and TARGET_SHORT (-120 to -145); exact search with pruning.
 5. Options 1-3: the highest chance to hit across those books, each on a different set of games. Each option
@@ -20,6 +22,7 @@ import math
 
 import pandas as pd
 
+from maxine.blend import blend
 from maxine.models import goals
 from maxine.teams import ODDS_NAME_TO_NHL
 
@@ -102,25 +105,31 @@ def legs(payload: dict, fixtures: pd.DataFrame, p_ml: dict, prices: dict, line_c
     quoting = df.groupby("game_id")["book"].nunique().rename("books_quoting")
     df = df.join(offering, on=["game_id", "selection"]).join(quoting, on="game_id")
     df["shared"] = (df["books_offering"] >= SHARED_MIN_BOOKS) & (df["books_offering"] >= SHARED_SHARE * df["books_quoting"])
+    # market chance of each exact line: median of the books' no-margin chances; fallback 1/price less 5% margin
+    cons = df.groupby(["game_id", "selection"])["p_book"].median().rename("p_market")
+    df = df.join(cons, on=["game_id", "selection"])
+    df["p_market"] = df["p_market"].fillna(1 / df["price"] / 1.05)
+    df["p_use"] = [blend(m, k, kind, line if kind == "puck line" else 0.0)
+                   for m, k, kind, line in zip(df["p_model"], df["p_market"], df["kind"], df["line"])]
     return df.reset_index(drop=True)
 
 
 def _frontier(g: pd.DataFrame, max_price: float) -> list:
     """Legs worth considering in one game at one book: no other leg pays more AND is more likely."""
-    g = g[g["price"] < max_price].sort_values(["price", "p_model"], ascending=[False, False])
+    g = g[g["price"] < max_price].sort_values(["price", "p_use"], ascending=[False, False])
     keep, best_p = [], -1.0
     for r in g.itertuples():
-        if r.p_model > best_p:
+        if r.p_use > best_p:
             keep.append(r)
-            best_p = r.p_model
+            best_p = r.p_use
     return keep
 
 
 def _search_book(legs_df: pd.DataFrame, lo: float, hi: float, sizes, options: int) -> list[tuple]:
     """Top `options` (p, combo, price) at one book, each on a different set of games."""
-    by_game = {gid: sorted(_frontier(g, hi), key=lambda l: -l.p_model) for gid, g in legs_df.groupby("game_id")}
+    by_game = {gid: sorted(_frontier(g, hi), key=lambda l: -l.p_use) for gid, g in legs_df.groupby("game_id")}
     by_game = {k: v for k, v in by_game.items() if v}
-    games_all = sorted(by_game, key=lambda g: -by_game[g][0].p_model)   # likeliest games first: good sets early
+    games_all = sorted(by_game, key=lambda g: -by_game[g][0].p_use)   # likeliest games first: good sets early
     top: list[tuple] = []
 
     def threshold() -> float:
@@ -129,7 +138,7 @@ def _search_book(legs_df: pd.DataFrame, lo: float, hi: float, sizes, options: in
     for n in sizes:
         for games in itertools.combinations(games_all, n):
             ls = [by_game[g] for g in games]
-            max_p = [l[0].p_model for l in ls]
+            max_p = [l[0].p_use for l in ls]
             if math.prod(max_p) <= threshold():
                 continue                                               # this set cannot reach the top
             rest_p = [math.prod(max_p[i:]) for i in range(n + 1)]
@@ -143,7 +152,7 @@ def _search_book(legs_df: pd.DataFrame, lo: float, hi: float, sizes, options: in
                         best[:] = [p, tuple(chosen), price]
                     return
                 for leg in ls[i]:                                     # sorted by chance, highest first
-                    p2 = p * leg.p_model
+                    p2 = p * leg.p_use
                     if p2 * rest_p[i + 1] <= max(best[0], threshold()):
                         break                                          # every later leg is less likely
                     pr2 = price * leg.price
@@ -191,12 +200,14 @@ def search(legs_df: pd.DataFrame, bet_books=BET_BOOKS, short: int = TARGET_SHORT
                 elsewhere[other] = decimal_to_american(math.prod(ps))
         out.append({
             "rank": rank, "book": book, "legs_n": len(combo), "price": price, "american": decimal_to_american(price),
-            "p_model": p, "breakeven": 1 / price, "ev": p * price - 1,
+            "p_model": p, "p_model_only": math.prod(l.p_model for l in combo),
+            "breakeven": 1 / price, "ev": p * price - 1,
             "p_book": math.prod(p_book) if all(x is not None for x in p_book) else None,
             "elsewhere": elsewhere,
             "legs": [{"game_id": int(l.game_id), "home": l.home, "away": l.away, "start_utc": str(l.start_utc),
                       "kind": l.kind, "selection": l.selection, "price": float(l.price),
-                      "american": decimal_to_american(l.price), "p_model": float(l.p_model),
+                      "american": decimal_to_american(l.price), "p_model": float(l.p_use),
+                      "p_model_only": float(l.p_model), "p_market": float(l.p_market),
                       "books_offering": int(l.books_offering),
                       "p_book": None if l.p_book is None or pd.isna(l.p_book) else float(l.p_book)}
                      for l in combo],

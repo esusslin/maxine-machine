@@ -180,3 +180,23 @@ The score grid is too narrow for 3+ goal margins, and the main-line totals calib
 pushes far totals toward 50%. Per-line Platt calibration, fit walk-forward on earlier seasons, fixes both
 (log loss better or equal on every line except ±1.5 and 5.5, where it is within 0.002). Used only for the
 Ladder tab's alternate lines; main-line picks are unchanged.
+
+## 11. Where the model adds information — blend weights for Parlays and Ladder (adopted)
+
+Season evaluation (`evaluate.py`), each season predicted by a model fit only on earlier seasons. When the
+model differed from the closing line by 3+ points, the side it leaned to, result minus what the market
+expected (percentage points; games in brackets):
+
+| Leaned to | 2022-23 | 2023-24 | 2024-25 | 2025-26 | 4 seasons |
+|---|---|---|---|---|---|
+| Puck line underdog +1.5 | +0.4 (381) | +0.7 (772) | +1.4 (778) | +4.9 (357) | +1.5 (2,288) |
+| Moneyline underdog | -0.3 (279) | -0.2 (516) | +2.0 (574) | +4.3 (371) | +1.5 (1,740) |
+| Moneyline favourite | +2.1 (578) | +4.1 (205) | +1.4 (147) | -1.7 (318) | +1.4 (1,248) |
+| Puck line favourite -1.5 | +3.2 (232) | +4.3 (109) | -1.8 (44) | +0.3 (150) | +2.2 (535) |
+| Under | +16 (20) | +2.1 (1,021) | +3.3 (763) | -1.3 (152) | +2.4 (1,956) |
+| Over | +1.0 (1,001) | -17 (18) | +10 (7) | -2.8 (175) | +0.2 (1,201) |
+
+Puck line underdog is the only type positive every season; totals swing the most. Differences between types
+are mostly within noise (±1-2 points), so the weights are a judgement, kept conservative (the market always
+has 40-80%): chance used = sigmoid(w·logit(model) + (1-w)·logit(market)), w = 0.60 puck line underdog,
+0.40 moneyline, 0.25 puck line favourite, 0.20 totals (`blend.py`). Picks on the Board are unchanged.

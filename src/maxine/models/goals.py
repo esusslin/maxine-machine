@@ -237,6 +237,8 @@ def calibrators(con, before_season: int | None = None) -> dict:
             c, l_, _ = prob_spread(pr, h)
             if M + h != 0:
                 spr_p.append(c / (c + l_)); spr_y.append(M + h > 0)
+    if not tot_p or not spr_p:
+        return {}                    # no earlier out-of-sample season to calibrate on: leave uncalibrated
     return {"totals": _platt(tot_p, tot_y), "spreads": _platt(spr_p, spr_y)}
 
 
