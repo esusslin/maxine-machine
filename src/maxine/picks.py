@@ -221,34 +221,61 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
             for rec in out.to_dict("records"):
                 fh.write(json.dumps(rec, default=str) + "\n")
     parlay_list = parlays.build(leg_in, live_markets.book_rows(snap["path"]))
-    lad = {"options": [], "legs": 0, "error": None}
+    lad, lad_state = {"options": [], "legs": 0, "error": None}, None
     if ladder_feed:
         try:
-            lad, credits = _ladder(con, snap["path"], fx, p_ml, prices, credits)
+            lad, lad_state, credits = _ladder(con, snap["path"], fx, p_ml, gm, lam, credits)
         except Exception as e:  # noqa: BLE001 — the Ladder tab must never break the picks run
             lad["error"] = f"{type(e).__name__}: {e}"
     return {"status": status, "credits_remaining": credits, "board": board, "picks": picks, "parlays": parlay_list,
-            "ladder": lad}
+            "ladder": lad, "ladder_state": lad_state}
 
 
-def _ladder(con, us_snapshot_path: str, fx: pd.DataFrame, p_ml: dict, prices: dict, credits):
-    """Main + alternate lines from several books for today's games -> the three best parlays near -130."""
+def _ladder(con, us_snapshot_path: str, fx: pd.DataFrame, p_ml: dict, gm, lam: pd.DataFrame, credits):
+    """Main + alternate lines from several books for today's games -> the three best parlays in the window.
+    Also returns the model state needed to re-price the Ladder later without refitting (ladder_refresh)."""
     data = json.loads(open(us_snapshot_path).read())["data"]
-    wanted = {(f.home, f.away) for f in fx.itertuples()}
-    ids = [ev["id"] for ev in data
-           if (ODDS_NAME_TO_NHL.get(ev["home_team"]), ODDS_NAME_TO_NHL.get(ev["away_team"])) in wanted]
-    if not ids:
-        return {"options": [], "legs": 0, "error": None}, credits
-    snap = odds.alt_lines(ids, ladder.LINE_BOOKS)
+    by_teams = {(f.home, f.away): f for f in fx.itertuples()}
+    games = []
+    for ev in data:
+        f = by_teams.get((ODDS_NAME_TO_NHL.get(ev["home_team"]), ODDS_NAME_TO_NHL.get(ev["away_team"])))
+        if f is not None:
+            games.append({"game_id": int(f.game_id), "home": f.home, "away": f.away,
+                          "start_utc": pd.Timestamp(f.start_utc).isoformat(), "event_id": ev["id"]})
+    cals = goals.line_calibrators(con)
+    state = {"games": games,
+             "p_ml": {str(k): float(v) for k, v in p_ml.items()},
+             "lam": {str(r.game_id): [float(r.lam_h), float(r.lam_a)] for r in lam.itertuples()},
+             "gm": [gm.tie_factor, gm.en_shift, gm.ot_a, gm.ot_b],
+             "line_cals": [[k[0], k[1], v[0], v[1]] for k, v in cals.items()]}
+    out = ladder_refresh(state)
+    return out, state, out.pop("credits_remaining", None) or credits
+
+
+def ladder_refresh(state: dict) -> dict:
+    """Re-pull main + alternate lines for the games in `state` that have not started and re-rank. No model
+    refit: uses the win chances, goal rates and line calibrations saved by the last full run."""
+    now = pd.Timestamp.now(tz="UTC")
+    games = [g for g in state.get("games", []) if pd.Timestamp(g["start_utc"]) > now]
+    base = {"options": [], "lines": 0, "shared_lines": 0, "books": [], "games": 0, "bet_books": list(ladder.BET_BOOKS),
+            "target": [ladder.TARGET_SHORT, ladder.TARGET_LONG], "priced_at": None, "error": None,
+            "shared_rule": f"offered by {ladder.SHARED_MIN_BOOKS}+ books and at least half of those quoting the game"}
+    if not games:
+        return base
+    fx = pd.DataFrame(games)
+    fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
+    snap = odds.alt_lines([g["event_id"] for g in games], ladder.LINE_BOOKS)
     payload = json.loads(open(snap["path"]).read())
-    lg = ladder.legs(payload, fx, p_ml, prices, goals.line_calibrators(con))
+    gm = goals.GoalModel(None, None, *state["gm"])
+    prices = {int(k): goals.price(gm, lh, la) for k, (lh, la) in state["lam"].items()}
+    p_ml = {int(k): v for k, v in state["p_ml"].items()}
+    cals = {(kind, float(line)): (a, b) for kind, line, a, b in state["line_cals"]}
+    lg = ladder.legs(payload, fx, p_ml, prices, cals)
     shared = lg[lg["shared"]] if len(lg) else lg
-    return ({"options": ladder.search(lg), "lines": int(len(lg)), "shared_lines": int(len(shared)),
-             "books": sorted(lg["book"].unique().tolist()) if len(lg) else [],
-             "games": int(lg["game_id"].nunique()) if len(lg) else 0, "bet_books": list(ladder.BET_BOOKS),
-             "shared_rule": f"offered by {ladder.SHARED_MIN_BOOKS}+ books and at least half of those quoting the game",
-             "target": [ladder.TARGET_SHORT, ladder.TARGET_LONG], "error": None},
-            snap["credits_remaining"] or credits)
+    return {**base, "options": ladder.search(lg), "lines": int(len(lg)), "shared_lines": int(len(shared)),
+            "books": sorted(lg["book"].unique().tolist()) if len(lg) else [],
+            "games": int(lg["game_id"].nunique()) if len(lg) else 0,
+            "priced_at": payload.get("taken_at"), "credits_remaining": snap["credits_remaining"]}
 
 
 def print_report(r: dict) -> None:

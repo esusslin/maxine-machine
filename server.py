@@ -48,6 +48,7 @@ MANUAL = {
     "picks": jobs.run_picks,
     "closes": lambda: jobs.capture_closes(force=True),
     "evaluate": jobs.evaluate_season,
+    "ladder": jobs.refresh_ladder,
     "results": jobs.results_and_grade,
     "bootstrap": jobs.bootstrap,
 }

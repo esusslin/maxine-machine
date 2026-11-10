@@ -93,12 +93,30 @@ def run_picks() -> dict:
                                     "game_day_picks": settings.GAME_DAY_PICKS}))
         set_kv("parlays", json.dumps({"parlays": r.get("parlays", [])}, default=_clean))
         set_kv("ladder", json.dumps(r.get("ladder") or {"options": []}, default=_clean))
+        if r.get("ladder_state"):
+            set_kv("ladder_state", json.dumps(r["ladder_state"], default=_clean))
         if r.get("credits_remaining") is not None:
             set_kv("odds_credits_remaining", str(r["credits_remaining"]))
         stored = paper.store_picks(r["picks"]) if not r["picks"].empty else 0
         ctx["rows_affected"] = stored
         ctx["note"] = json.dumps({"board": len(records), "new_picks": stored})
         return {"board": len(records), "new_picks": stored}
+
+
+def refresh_ladder() -> dict:
+    """Re-price the Ladder with fresh odds (no model refit): about 5 credits per game not yet started."""
+    from maxine.web.appdb import get_kv
+    with job_run("ladder_refresh") as ctx:
+        row = get_kv("ladder_state")
+        if not row:
+            raise RuntimeError("no Ladder state yet: run the full formula first")
+        out = picks.ladder_refresh(json.loads(row["value"]))
+        credits = out.pop("credits_remaining", None)
+        set_kv("ladder", json.dumps(out, default=_clean))
+        if credits is not None:
+            set_kv("odds_credits_remaining", str(credits))
+        ctx["note"] = json.dumps({"options": len(out["options"]), "games": out["games"], "priced_at": out["priced_at"]})
+        return out
 
 
 def evaluate_season() -> dict:

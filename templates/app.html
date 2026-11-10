@@ -320,7 +320,12 @@
   <!-- ============ ladder ============ -->
   <div x-show="tab==='ladder'" class="px-4 space-y-2">
     <p class="text-[11px] text-slate-500" x-show="ladder.updated_at"
-       x-text="'Built '+ago(ladder.updated_at)+' · '+(ladder.shared_lines||0)+' shared lines (of '+(ladder.lines||0)+') from '+(ladder.books||[]).length+' books in '+(ladder.games||0)+' games · priced at '+(ladder.bet_books||[]).map(bookName).join(' or ')+' · target '+((ladder.target||[-140,-120])[0])+' to '+((ladder.target||[-140,-120])[1])"></p>
+       x-text="'Prices as of '+(ladder.priced_at?new Date(ladder.priced_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' ('+ago(ladder.priced_at)+')':ago(ladder.updated_at))+' · '+(ladder.shared_lines||0)+' shared lines (of '+(ladder.lines||0)+') from '+(ladder.books||[]).length+' books in '+(ladder.games||0)+' games · priced at '+(ladder.bet_books||[]).map(bookName).join(' or ')+' · target '+((ladder.target||[-140,-120])[0])+' to '+((ladder.target||[-140,-120])[1])"></p>
+    <div class="flex items-center gap-2" x-show="user.role==='admin'">
+      <button @click="refreshLadder()" class="py-1.5 px-3 rounded border border-slate-600 text-xs" :disabled="ladderBusy"
+              x-text="ladderBusy ? 'Refreshing…' : 'Refresh prices now'"></button>
+      <span class="text-[11px] text-slate-500">Re-pulls the lines for games not yet started and re-ranks (about 5 credits a game). Prices move: refresh right before you bet.</span>
+    </div>
     <p class="text-sm text-amber-300 card p-3" x-show="ladder.error" x-text="'Lines could not be read: '+ladder.error"></p>
     <p class="text-sm text-slate-500 card p-4" x-show="!(ladder.options||[]).length && !ladder.error">No parlay in the target range yet. Built with the 2:00 PM run, or Admin → Run full formula.</p>
     <template x-for="o in (ladder.options||[])" :key="o.rank">
@@ -436,6 +441,7 @@
         <button @click="runJob('closes')" class="py-2 rounded border border-slate-600 text-xs">Capture closes (3 credits)</button>
         <button @click="runJob('results')" class="py-2 rounded border border-slate-600 text-xs">Results + grade</button>
         <button @click="runJob('evaluate')" class="py-2 rounded border border-slate-600 text-xs">Evaluate season</button>
+        <button @click="runJob('ladder')" class="py-2 rounded border border-slate-600 text-xs">Refresh Ladder prices</button>
       </div>
       <p class="text-xs text-slate-400 mt-3" x-text="jobMsg"></p>
     </div>
@@ -485,7 +491,7 @@ function algo(){return{
   inviteCode:'', inviteValid:false, inviteReason:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
-  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
+  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, ladderBusy:false, evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
 
   tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'parlays',label:'Parlays'},{key:'ladder',label:'Ladder'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
@@ -573,6 +579,17 @@ function algo(){return{
     if(this.tab==='model'){ this.model=await this.get('/api/model'); this.algo=await this.get('/api/algorithm') }
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }
     this.fresh=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  },
+  async refreshLadder(){
+    this.ladderBusy=true;
+    const before=this.ladder.updated_at;
+    await fetch('/api/admin/run/ladder',{method:'POST',headers:this.hdr()});
+    for(let i=0;i<30;i++){                       // poll up to ~60 s for the new prices
+      await new Promise(r=>setTimeout(r,2000));
+      const d=await this.get('/api/ladder');
+      if(d.updated_at!==before){ this.ladder=d; break }
+    }
+    this.ladderBusy=false;
   },
   async runJob(name){
     const r=await fetch('/api/admin/run/'+name,{method:'POST',headers:this.hdr()});

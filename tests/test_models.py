@@ -175,3 +175,31 @@ def test_blend_weights_by_leg_type():
     dog, tot = blend(0.80, 0.70, "puck line", 2.5), blend(0.80, 0.70, "total")
     assert 0.70 < tot < dog < 0.80 and dog > 0.75 > tot
     assert blend(0.8, None, "total") == 0.8
+
+
+def test_ladder_refresh_from_state(monkeypatch, tmp_path):
+    """Re-pricing from saved state: no refit, only games not started, same search as the full run."""
+    import json
+    import pandas as pd
+    from maxine import picks
+    from maxine.ingest import odds
+    payload = _ladder_payload()
+    path = tmp_path / "alt.json"
+    path.write_text(json.dumps({"taken_at": "2026-11-10T21:00:00Z", **payload}))
+    seen = {}
+    def fake_alt(ids, books):
+        seen["ids"] = ids
+        return {"path": str(path), "events": len(ids), "credits_remaining": "999"}
+    monkeypatch.setattr(odds, "alt_lines", fake_alt)
+    future, past = (pd.Timestamp.now(tz="UTC") + pd.Timedelta(hours=3)).isoformat(), "2020-01-01T00:00:00+00:00"
+    games = [{"game_id": 1, "home": "NYR", "away": "BOS", "start_utc": future, "event_id": "e0"},
+             {"game_id": 2, "home": "DAL", "away": "STL", "start_utc": future, "event_id": "e1"},
+             {"game_id": 3, "home": "TBL", "away": "DET", "start_utc": future, "event_id": "e2"},
+             {"game_id": 4, "home": "SEA", "away": "VAN", "start_utc": past, "event_id": "e9"}]
+    state = {"games": games, "p_ml": {"1": 0.55, "2": 0.55, "3": 0.55},
+             "lam": {str(g): [3.1, 2.9] for g in (1, 2, 3)}, "gm": [1.37, 0.36, 0.0, 0.9],
+             "line_cals": [["total", 5.5, 0.0, 1.0], ["spread", 1.5, 0.0, 1.0]]}
+    out = picks.ladder_refresh(state)
+    assert seen["ids"] == ["e0", "e1", "e2"]                    # the started game is not re-pulled
+    assert out["priced_at"] == "2026-11-10T21:00:00Z" and out["credits_remaining"] == "999"
+    assert 1 <= len(out["options"]) <= 3 and out["games"] == 3
