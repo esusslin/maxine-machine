@@ -108,7 +108,7 @@ def test_parlays_one_leg_per_game_and_book_pricing():
 
 def _ladder_payload():
     def book(key, alt, extra_total=False):
-        totals = [{"name": "Over", "price": 1.25, "point": 4.5}, {"name": "Under", "price": 3.8, "point": 4.5},
+        totals = [{"name": "Over", "price": 1.18, "point": 4.5}, {"name": "Under", "price": 4.6, "point": 4.5},
                   {"name": "Over", "price": 1.9, "point": 6.0}]                     # whole number: skipped
         if extra_total:
             totals += [{"name": "Under", "price": 1.08, "point": 9.5}]               # one book only: not shared
@@ -118,7 +118,7 @@ def _ladder_payload():
                 {"name": away, "price": alt, "point": 2.5}, {"name": home, "price": 3.9, "point": -2.5},
                 {"name": away, "price": 1.55, "point": 1.5}, {"name": home, "price": 2.45, "point": -1.5}]},
             {"key": "alternate_totals", "outcomes": totals}]}
-    books = [book("bovada", 1.22, extra_total=True), book("draftkings", 1.24), book("fanduel", 1.23)]
+    books = [book("bovada", 1.20, extra_total=True), book("draftkings", 1.24), book("fanduel", 1.23)]
     games = [("New York Rangers", "Boston Bruins"), ("Dallas Stars", "St Louis Blues"),
              ("Tampa Bay Lightning", "Detroit Red Wings")]
     return {"events": [{"id": f"e{i}", "home_team": h, "away_team": a, "bookmakers": [b(h, a) for b in books]}
@@ -141,11 +141,11 @@ def test_ladder_shared_lines_and_search():
     assert not lg[lg["selection"] == "Under 9.5"]["shared"].any()              # only one book has it
     assert lg[lg["selection"] == "BOS +2.5"]["shared"].all()
     pb = lg[(lg["book"] == "bovada") & (lg["game_id"] == 1) & (lg["selection"] == "BOS +2.5")]["p_book"].iloc[0]
-    assert abs(pb - (1 / 1.22) / (1 / 1.22 + 1 / 3.9)) < 1e-9                  # paired with NYR -2.5, same book
+    assert abs(pb - (1 / 1.20) / (1 / 1.20 + 1 / 3.9)) < 1e-9                  # paired with NYR -2.5, same book
     opts = ladder.search(lg)
     assert 1 <= len(opts) <= 3
     assert [o["rank"] for o in opts] == list(range(1, len(opts) + 1))
-    assert all(-145 <= o["american"] <= -120 and o["book"] in ("bovada", "draftkings") for o in opts)
+    assert all(-145 <= o["american"] <= -130 and o["book"] in ("bovada", "draftkings") for o in opts)
     assert len({tuple(sorted(l["game_id"] for l in o["legs"])) for o in opts}) == len(opts)
     assert opts == sorted(opts, key=lambda o: -o["p_model"])
     assert all("Under 9.5" not in [l["selection"] for l in o["legs"]] for o in opts)

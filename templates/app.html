@@ -320,7 +320,7 @@
   <!-- ============ ladder ============ -->
   <div x-show="tab==='ladder'" class="px-4 space-y-2">
     <p class="text-[11px] text-slate-500" x-show="ladder.updated_at"
-       x-text="'Built '+ago(ladder.updated_at)+' · '+(ladder.shared_lines||0)+' shared lines (of '+(ladder.lines||0)+') from '+(ladder.books||[]).length+' books in '+(ladder.games||0)+' games · priced at '+(ladder.bet_books||[]).map(bookName).join(' or ')+' · target '+((ladder.target||[-145,-120])[0])+' to '+((ladder.target||[-145,-120])[1])"></p>
+       x-text="'Built '+ago(ladder.updated_at)+' · '+(ladder.shared_lines||0)+' shared lines (of '+(ladder.lines||0)+') from '+(ladder.books||[]).length+' books in '+(ladder.games||0)+' games · priced at '+(ladder.bet_books||[]).map(bookName).join(' or ')+' · target '+((ladder.target||[-145,-130])[0])+' to '+((ladder.target||[-145,-130])[1])"></p>
     <p class="text-sm text-amber-300 card p-3" x-show="ladder.error" x-text="'Lines could not be read: '+ladder.error"></p>
     <p class="text-sm text-slate-500 card p-4" x-show="!(ladder.options||[]).length && !ladder.error">No parlay in the target range yet. Built with the 2:00 PM run, or Admin → Run full formula.</p>
     <template x-for="o in (ladder.options||[])" :key="o.rank">
@@ -341,7 +341,7 @@
         </template>
       </div>
     </template>
-    <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. For Bovada and for DraftKings separately: one leg per game, every 2- to 5-game combination priced between -145 and -120 at that book. Ranked by chance to hit; each option uses a different set of games. Each leg's chance blends the model with the market by leg type: puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
+    <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. For Bovada and for DraftKings separately: one leg per game, every 2- to 5-game combination priced between -145 and -130 at that book. Ranked by chance to hit; each option uses a different set of games. Each leg's chance blends the model with the market by leg type: puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
   </div>
 
   <!-- ============ model ============ -->
@@ -491,7 +491,7 @@ function algo(){return{
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
   tabTitle(){ return {board:'Board',picks:'Paper picks',parlays:'Parlays',ladder:'Ladder',model:'Model',admin:'Admin'}[this.tab] },
   subtitle(){ return {board:'Today\'s games, model vs market at 2 PM PT',picks:'Game-day picks, graded against the close',parlays:'Best chance to hit, 3 to 8 legs',
-    ladder:'Most likely way to about -130 at Bovada or DraftKings (2-5 legs)',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
+    ladder:'Closest thing to a lock at -130 to -145, Bovada or DraftKings (2-5 legs)',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
   glossary(){
     if(this.tab==='board') return [
       {term:'model / market',def:'Probability of the listed selection. Market is the median across books with the bookmaker margin removed.'},

@@ -10,7 +10,7 @@
    model, moneyline 40%, puck line favourite 25%, totals 20%). Market = median no-margin chance of that exact
    line across the books listing both sides; if none does, 1/price less a 5% margin.
 4. For each book you bet at (BET_BOOKS): one leg per game, every 2- to 5-game combination whose combined price
-   at that book is between TARGET_LONG and TARGET_SHORT (-120 to -145); exact search with pruning.
+   at that book is between TARGET_LONG and TARGET_SHORT (-130 to -145); exact search with pruning.
 5. Options 1-3: the highest chance to hit across those books, each on a different set of games. Each option
    also shows the price of the same legs at the other bet books that offer them all.
 At a near-fixed price, the highest chance to hit is also the best value.
@@ -31,7 +31,7 @@ LINE_BOOKS = ("bovada", "draftkings", "fanduel", "betmgm", "williamhill_us", "es
 SHARED_MIN_BOOKS = 3
 SHARED_SHARE = 0.5
 TARGET_SHORT = -145     # shortest combined price allowed (American)
-TARGET_LONG = -120      # longest combined price allowed
+TARGET_LONG = -130      # longest combined price allowed
 SIZES = (2, 3, 4, 5)
 OPTIONS = 3
 
