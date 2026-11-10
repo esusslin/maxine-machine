@@ -29,7 +29,7 @@
 <!-- ============ auth ============ -->
 <div x-show="!token" class="max-w-sm mx-auto px-5 pt-16">
   <h1 class="text-2xl mb-1">Maxine Machine</h1>
-  <p class="text-sm text-slate-400 mb-8" x-text="inviteCode ? 'Create your account' : 'Sign in'"></p>
+  <p class="text-sm text-slate-400 mb-8" x-text="inviteCode ? (inviteName ? 'Hi '+inviteName+', set a password to get in.' : 'Create your account') : 'Sign in'"></p>
 
   <template x-if="inviteCode">
     <div class="mb-4 text-xs px-3 py-2 rounded"
@@ -57,15 +57,8 @@
   <template x-if="!resetToken && forgot">
     <div>
       <p class="text-xs text-slate-400 mb-3">
-        Enter your username or phone number. If we have a phone on file we'll
-        text you a reset link.
+        Forgot your password? Text the person who invited you: they can send you a reset link.
       </p>
-      <input x-model="forgotId" placeholder="username or phone" autocapitalize="none"
-             class="w-full mb-4 px-3 py-3 rounded bg-slate-800/60 border border-slate-700 text-base">
-      <button @click="requestReset()" class="w-full py-3 rounded bg-emerald-600 text-white font-medium">
-        Send reset link
-      </button>
-      <p class="text-slate-400 text-sm mt-3" x-text="forgotMsg"></p>
       <button @click="forgot=false; forgotMsg=''" class="text-xs text-slate-500 mt-4">Back to sign in</button>
     </div>
   </template>
@@ -73,24 +66,19 @@
   <!-- login / register -->
   <template x-if="!resetToken && !forgot">
     <div>
-      <input x-model="form.username" placeholder="username" autocapitalize="none" autocomplete="username"
+      <input x-show="!inviteCode || inviteNeedsUsername" x-model="form.username"
+             :placeholder="inviteCode ? 'choose a username' : 'name or phone number'" autocapitalize="none" autocomplete="username"
              class="w-full mb-3 px-3 py-3 rounded bg-slate-800/60 border border-slate-700 text-base">
-      <input x-model="form.password" type="password" placeholder="password"
+      <input x-model="form.password" type="password" :placeholder="inviteCode ? 'password (8+ characters)' : 'password'"
              :autocomplete="inviteCode ? 'new-password' : 'current-password'"
              class="w-full mb-3 px-3 py-3 rounded bg-slate-800/60 border border-slate-700 text-base">
-      <template x-if="inviteCode">
-        <div>
-          <input x-model="form.phone" type="tel" placeholder="mobile number (for alerts and password reset)"
-                 autocomplete="tel"
-                 class="w-full mb-1 px-3 py-3 rounded bg-slate-800/60 border border-slate-700 text-base">
-          <p class="text-[11px] text-slate-500 mb-4">
-            Optional, but without it you'll need an admin to reset your password.
-          </p>
-        </div>
-      </template>
+      <input x-show="inviteCode" x-model="form.password2" type="password" placeholder="password again"
+             autocomplete="new-password"
+             class="w-full mb-3 px-3 py-3 rounded bg-slate-800/60 border border-slate-700 text-base">
       <button @click="inviteCode ? register() : login()"
               class="w-full py-3 rounded bg-emerald-600 text-white font-medium mt-1"
-              x-text="inviteCode ? 'Create account' : 'Sign in'"></button>
+              x-text="inviteCode ? 'Set password and sign in' : 'Sign in'"></button>
+      <p class="text-emerald-300 text-sm mt-3" x-text="welcome"></p>
       <p class="text-red-400 text-sm mt-3" x-text="error"></p>
       <button x-show="!inviteCode" @click="forgot=true"
               class="text-xs text-slate-500 mt-4">Forgot password?</button>
@@ -521,7 +509,23 @@
       </div>
     </div>
 
-    <button @click="newInvite()" class="w-full py-3 rounded bg-emerald-600 text-white text-sm mb-4">Create invite</button>
+    <div class="card p-3 mb-3 space-y-2">
+      <p class="text-sm font-semibold">Invite someone</p>
+      <input x-model="newInv.name" placeholder="name (e.g. Dave Smith)"
+             class="w-full px-3 py-2 rounded bg-slate-800/60 border border-slate-700 text-sm">
+      <input x-model="newInv.phone" type="tel" placeholder="mobile number"
+             class="w-full px-3 py-2 rounded bg-slate-800/60 border border-slate-700 text-sm">
+      <button @click="newInvite()" :disabled="!newInv.name.trim()" class="w-full py-2 rounded bg-emerald-600 text-white text-sm disabled:opacity-40">Create invite</button>
+      <template x-if="lastInvite">
+        <div class="text-[12px] text-slate-300 space-y-2">
+          <p x-text="'Invite for '+lastInvite.name+' is ready. They open the link and just set a password; they sign in with their name or phone.'"></p>
+          <div class="flex gap-2">
+            <a x-show="lastInvite.sms_url" :href="lastInvite.sms_url" class="px-3 py-1.5 rounded bg-emerald-700 text-white text-xs">Text it from my phone</a>
+            <button @click="copyText(lastInvite.message)" class="px-3 py-1.5 rounded border border-slate-600 text-xs">Copy message</button>
+          </div>
+        </div>
+      </template>
+    </div>
     <div class="space-y-2">
       <template x-for="i in invites" :key="i.code">
         <div class="card p-3">
@@ -530,8 +534,25 @@
             <span class="text-[11px] px-2 py-0.5 rounded"
                   :class="i.status==='open'?'bg-emerald-900 text-emerald-300':'bg-slate-700 text-slate-400'" x-text="i.status"></span>
           </div>
-          <p class="text-[11px] text-slate-500 mt-1" x-text="i.used_by_username ? 'used by '+i.used_by_username : (i.note||'')"></p>
-          <button x-show="i.status==='open'" @click="copyInvite(i.code)" class="text-xs mt-2 px-3 py-1.5 rounded border border-slate-600">Copy link</button>
+          <p class="text-[12px] mt-1" x-text="(i.name||i.note||'(no name)')+(i.phone?' · '+i.phone:'')"></p>
+          <p class="text-[11px] text-slate-500" x-show="i.used_by_username" x-text="'signed up as '+i.used_by_username"></p>
+          <div class="flex gap-2 mt-2" x-show="i.status==='open'">
+            <a x-show="i.sms_url" :href="i.sms_url" class="text-xs px-3 py-1.5 rounded bg-emerald-700 text-white">Text it</a>
+            <button @click="copyText(i.message)" class="text-xs px-3 py-1.5 rounded border border-slate-600">Copy message</button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <p class="text-sm font-semibold mt-5 mb-2">Members</p>
+    <div class="space-y-2">
+      <template x-for="m in members" :key="m.id">
+        <div class="card p-3 flex items-center justify-between gap-2">
+          <div>
+            <p class="text-sm" x-text="m.username+(m.role==='admin'?' (admin)':'')"></p>
+            <p class="text-[11px] text-slate-500" x-text="(m.phone||'no phone')+' · last in '+(m.last_login?ago(m.last_login):'never')"></p>
+          </div>
+          <button @click="resetFor(m)" class="text-xs px-3 py-1.5 rounded border border-slate-600">Reset password</button>
         </div>
       </template>
     </div>
@@ -549,8 +570,9 @@
 <script>
 function algo(){return{
   token:localStorage.getItem('maxine_token')||'', user:{}, tab:'board',
-  form:{username:'',password:'',phone:''}, error:'', fresh:'',
-  inviteCode:'', inviteValid:false, inviteReason:'',
+  form:{username:'',password:'',password2:'',phone:''}, error:'', fresh:'',
+  inviteCode:'', inviteValid:false, inviteReason:'', inviteName:'', inviteNeedsUsername:false, welcome:'',
+  newInv:{name:'',phone:''}, lastInvite:null, members:[],
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
   board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, ladderBusy:false, lines:{games:[]}, slip:{}, myBusy:false, myMsg:'', evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
@@ -581,7 +603,7 @@ function algo(){return{
     const q=new URLSearchParams(location.search);
     this.inviteCode=q.get('invite')||''; this.resetToken=q.get('reset')||'';
     if(this.inviteCode){ const r=await(await fetch('/api/auth/invite/'+this.inviteCode)).json();
-      this.inviteValid=r.valid; this.inviteReason=r.reason; }
+      this.inviteValid=r.valid; this.inviteReason=r.reason; this.inviteName=r.name||''; this.inviteNeedsUsername=!!r.needs_username; }
     if(this.resetToken){ this.token=''; localStorage.removeItem('maxine_token');
       const r=await(await fetch('/api/auth/reset/'+this.resetToken)).json();
       this.resetValid=r.valid; this.resetReason=r.reason; }
@@ -596,14 +618,16 @@ function algo(){return{
   },
   async register(){
     this.error='';
+    if(this.form.password!==this.form.password2){ this.error='Passwords do not match'; return }
     const r=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({invite:this.inviteCode,...this.form})});
     const d=await r.json();
     if(!r.ok){this.error=d.detail||'Could not create account';return}
     this.token=d.token; this.user=d.user; localStorage.setItem('maxine_token',d.token);
+    alert('You\'re in. Next time sign in with "'+d.user.username+'" or your phone number, and your password.');
     history.replaceState({},'','/app'); this.inviteCode=''; await this.refresh();
   },
-  signOut(){ this.token=''; this.user={}; this.account=false; localStorage.removeItem('maxine_token'); this.form={username:'',password:'',phone:''} },
+  signOut(){ this.token=''; this.user={}; this.account=false; localStorage.removeItem('maxine_token'); this.form={username:'',password:'',password2:'',phone:''} },
   async saveProfile(){
     this.profileMsg='Saving…';
     const r=await fetch('/api/auth/me',{method:'PATCH',headers:this.hdr(),body:JSON.stringify({phone:this.profilePhone})});
@@ -639,7 +663,7 @@ function algo(){return{
     if(this.tab==='parlays') this.parlays=await this.get('/api/parlays');
     if(this.tab==='ladder'){ this.ladder=await this.get('/api/ladder'); this.lines=await this.get('/api/ladder/lines') }
     if(this.tab==='model'){ this.model=await this.get('/api/model'); this.algo=await this.get('/api/algorithm') }
-    if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }
+    if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[]; this.members=(await this.get('/api/admin/users')).users||[] }
     this.fresh=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   },
   gameOf(gid){ return (this.lines.games||[]).find(g=>g.game_id==gid) },
@@ -710,14 +734,20 @@ function algo(){return{
     const d=await r.json(); this.jobMsg=r.ok?('Queued: '+d.queued+'. Refresh in a minute.'):(d.detail||'failed');
   },
   async newInvite(){
-    const note=prompt('Who is this for?')||'';
-    const phone=prompt('Text it to them? Enter a phone number, or leave blank for a link only.')||'';
-    const r=await(await fetch('/api/admin/invites',{method:'POST',headers:this.hdr(),body:JSON.stringify({note,phone:phone||null})})).json();
-    if(r.sms) alert(r.sms.status==='sent'?'Texted to '+r.sms.to:'Not texted ('+(r.sms.error||'unknown')+').\nLink:\n'+r.link);
-    else { navigator.clipboard?.writeText(r.link); alert('Link copied:\n'+r.link) }
+    const r=await fetch('/api/admin/invites',{method:'POST',headers:this.hdr(),body:JSON.stringify(this.newInv)});
+    const d=await r.json();
+    if(!r.ok){ alert(d.detail||'Could not create invite'); return }
+    this.lastInvite=d; this.newInv={name:'',phone:''};
     await this.refresh();
   },
-  copyInvite(code){ const url=location.origin+'/app?invite='+code; navigator.clipboard.writeText(url); alert('Copied:\n'+url) },
+  copyText(t){ navigator.clipboard?.writeText(t); alert('Copied:\n\n'+t) },
+  async resetFor(m){
+    const r=await fetch('/api/admin/reset-link/'+m.id,{method:'POST',headers:this.hdr()});
+    const d=await r.json();
+    if(!r.ok){ alert(d.detail||'failed'); return }
+    if(d.sms_url && confirm('Text '+m.username+' a reset link from your phone? (Cancel copies the link instead.)')) location.href=d.sms_url;
+    else this.copyText(d.link);
+  },
 
   boardGames(){
     const order={h2h:0,totals:1,spreads:2,reg3:3}, by={};

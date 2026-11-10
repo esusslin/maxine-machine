@@ -95,8 +95,24 @@ def create_user(username: str, password: str, role: str = "user",
         })
 
 
+def _digits10(raw: str) -> str:
+    d = "".join(c for c in (raw or "") if c.isdigit())
+    return d[-10:] if len(d) >= 10 else ""
+
+
+def get_user_by_phone(raw: str) -> dict | None:
+    d = _digits10(raw)
+    if not d:
+        return None
+    for r in query("SELECT * FROM users WHERE phone IS NOT NULL"):
+        if _digits10(r["phone"]) == d:
+            return dict(r)
+    return None
+
+
 def authenticate(username: str, password: str) -> dict | None:
-    user = get_user(username)
+    """Login with a username, or with the phone number on the account."""
+    user = get_user(username) or get_user_by_phone(username)
     if not user or not verify_password(password, user["password_hash"]):
         return None
     with db() as conn:
@@ -144,17 +160,37 @@ def bootstrap_admin() -> int | None:
 # --------------------------------------------------------------------------
 # invites
 # --------------------------------------------------------------------------
-def create_invite(created_by: int, note: str = "",
+def create_invite(created_by: int, note: str = "", name: str | None = None, phone: str | None = None,
                   ttl_days: int = INVITE_TTL_DAYS) -> dict:
+    from maxine.web.sms import normalize_phone
     code = secrets.token_urlsafe(9)
     expires = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat(
         timespec="seconds")
+    name = (name or "").strip() or None
+    phone = normalize_phone(phone) if phone else None
     with db() as conn:
         insert_row(conn, "invites", {
-            "code": code, "created_by": created_by, "note": note,
-            "created_at": utcnow(), "expires_at": expires,
+            "code": code, "created_by": created_by, "note": note or (name or ""),
+            "created_at": utcnow(), "expires_at": expires, "name": name, "phone": phone,
         })
-    return {"code": code, "expires_at": expires, "note": note}
+    return {"code": code, "expires_at": expires, "note": note, "name": name, "phone": phone}
+
+
+def invite_info(code: str) -> dict:
+    """What the invite page may show: validity and the first name (never the phone)."""
+    ok, reason = check_invite(code)
+    row = query_one("SELECT name FROM invites WHERE code=?", (code.strip(),))
+    name = row["name"] if row and row["name"] else None
+    return {"valid": ok, "reason": reason, "name": name.split()[0] if name else None,
+            "needs_username": not name}
+
+
+def _username_from_name(name: str) -> str:
+    base = "".join(c for c in name.strip().lower().replace(" ", ".") if c.isalnum() or c == ".").strip(".") or "member"
+    candidate, n = base, 2
+    while get_user(candidate):
+        candidate, n = f"{base}{n}", n + 1
+    return candidate
 
 
 def check_invite(code: str) -> tuple[bool, str]:
@@ -170,11 +206,20 @@ def check_invite(code: str) -> tuple[bool, str]:
     return True, "ok"
 
 
-def redeem_invite(code: str, username: str, password: str,
+def redeem_invite(code: str, username: str | None, password: str,
                   phone: str | None = None) -> dict:
+    """Name-and-phone invites: the username comes from the name and the phone from the invite, so the
+    person only sets a password. Older invites without a name still take a chosen username."""
     ok, reason = check_invite(code)
     if not ok:
         raise ValueError(reason)
+    inv = query_one("SELECT name, phone FROM invites WHERE code=?", (code.strip(),))
+    if inv and inv["name"]:
+        if len(password) < 8:
+            raise ValueError("password must be at least 8 characters")
+        username, phone = _username_from_name(inv["name"]), inv["phone"] or phone
+    elif not username:
+        raise ValueError("choose a username")
     user_id = create_user(username, password, role="user", phone=phone)
     with db() as conn:
         conn.execute("UPDATE invites SET used_by=?, used_at=? WHERE code=?",

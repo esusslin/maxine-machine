@@ -20,14 +20,29 @@ def test_login_invite_and_admin_guard():
         tok = c.post("/api/auth/login", json={"username": "admin", "password": "adminpass1"}).json()["token"]
         h = {"Authorization": f"Bearer {tok}"}
         assert c.post("/api/auth/login", json={"username": "admin", "password": "wrong"}).status_code == 401
-        inv = c.post("/api/admin/invites", headers=h, json={"note": "t"}).json()
-        r = c.post("/api/auth/register", json={"invite": inv["code"], "username": "pal", "password": "palpass12"})
-        assert r.status_code == 200
+        assert c.post("/api/admin/invites", headers=h, json={"phone": "5105551234"}).status_code == 400   # name required
+        inv = c.post("/api/admin/invites", headers=h, json={"name": "Dave Smith", "phone": "(510) 555-1234"}).json()
+        assert inv["phone"] == "+15105551234" and inv["sms_url"].startswith("sms:+15105551234?&body=")
+        assert "Hey Dave" in inv["message"] and inv["link"].endswith(inv["code"])
+        info = c.get(f"/api/auth/invite/{inv['code']}").json()
+        assert info == {"valid": True, "reason": "ok", "name": "Dave", "needs_username": False}
+        r = c.post("/api/auth/register", json={"invite": inv["code"], "password": "palpass12"})   # password only
+        assert r.status_code == 200 and r.json()["user"]["username"] == "dave.smith"
+        # sign in with the name-based username or the phone, any format
+        for who in ("dave.smith", "510-555-1234", "+1 (510) 555 1234"):
+            assert c.post("/api/auth/login", json={"username": who, "password": "palpass12"}).status_code == 200
+        # a second Dave gets a distinct username
+        inv2 = c.post("/api/admin/invites", headers=h, json={"name": "Dave Smith"}).json()
+        assert inv2["sms_url"] is None                                   # no phone: copy the message instead
+        r2 = c.post("/api/auth/register", json={"invite": inv2["code"], "password": "otherpass1"})
+        assert r2.json()["user"]["username"] == "dave.smith2"
+        reset = c.post(f"/api/admin/reset-link/{r.json()['user']['user_id']}", headers=h).json()
+        assert reset["sms_url"].startswith("sms:+15105551234")
         h2 = {"Authorization": f"Bearer {r.json()['token']}"}
         assert c.get("/api/board", headers=h2).status_code == 200
         assert c.get("/api/admin/status", headers=h2).status_code == 403
         # an invite works once
-        again = c.post("/api/auth/register", json={"invite": inv["code"], "username": "pal2", "password": "palpass12"})
+        again = c.post("/api/auth/register", json={"invite": inv["code"], "password": "palpass12"})
         assert again.status_code == 400
 
 

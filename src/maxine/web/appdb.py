@@ -204,6 +204,11 @@ MIGRATIONS: list[tuple[int, str]] = [
         profit, graded_at
     FROM paper_picks;
     """),
+    (4, """
+    -- invite by name and phone: the person only sets a password; login by name or phone
+    ALTER TABLE invites ADD COLUMN name TEXT;
+    ALTER TABLE invites ADD COLUMN phone TEXT;
+    """),
 ]
 
 

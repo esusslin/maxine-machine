@@ -143,14 +143,21 @@ class LoginBody(BaseModel):
 
 class RegisterBody(BaseModel):
     invite: str
-    username: str
+    username: str | None = None       # not needed for name-and-phone invites
     password: str
     phone: str | None = None
 
 
 class InviteBody(BaseModel):
-    note: str = ""
+    name: str = ""
     phone: str | None = None
+    note: str = ""
+
+
+def _sms_url(phone: str | None, text: str) -> str | None:
+    """Opens the admin's own Messages app with the text filled in (no SMS service involved)."""
+    from urllib.parse import quote
+    return f"sms:{phone}?&body={quote(text)}" if phone else None
 
 
 class ResetRequestBody(BaseModel):
@@ -178,8 +185,7 @@ def login(body: LoginBody) -> dict:
 
 @app.get("/api/auth/invite/{code}")
 def check_invite(code: str) -> dict:
-    ok, reason = auth.check_invite(code)
-    return {"valid": ok, "reason": reason}
+    return auth.invite_info(code)
 
 
 @app.post("/api/auth/register")
@@ -193,13 +199,8 @@ def register(body: RegisterBody) -> dict:
 
 @app.post("/api/auth/forgot")
 def forgot_password(request: Request, body: ResetRequestBody) -> dict:
-    r = auth.request_reset(body.identifier)
-    if r.get("sent"):
-        from maxine.web.sms import send_reset
-        sms = send_reset(r["token"], r["phone"], str(request.base_url))
-        if sms["status"] != "sent":
-            log.warning("reset SMS failed: %s", sms.get("error"))
-    return {"ok": True, "message": "If that account exists and has a phone on file, a reset link has been sent."}
+    # no SMS service: resets go through the admin (Admin -> Users -> Reset link)
+    return {"ok": True, "message": "Text the person who invited you: they can send you a reset link."}
 
 
 @app.get("/api/auth/reset/{token}")
@@ -224,11 +225,8 @@ def admin_reset_link(request: Request, user_id: int, admin: dict = Depends(auth.
         raise HTTPException(404, "user not found")
     r = auth.create_reset(user_id, issued_by=admin["username"])
     link = f"{str(request.base_url).rstrip('/')}/app?reset={r['token']}"
-    out = {"username": u["username"], "link": link, "expires_at": r["expires_at"]}
-    if u["phone"]:
-        from maxine.web.sms import send_reset
-        out["sms"] = send_reset(r["token"], u["phone"], str(request.base_url))
-    return out
+    return {"username": u["username"], "link": link, "expires_at": r["expires_at"],
+            "sms_url": _sms_url(u["phone"], f"Maxine Machine password reset (valid 1 hour): {link}")}
 
 
 @app.get("/api/auth/me")
@@ -251,17 +249,25 @@ def update_profile(body: ProfileBody, user: dict = Depends(auth.current_user)) -
 
 @app.post("/api/admin/invites")
 def make_invite(request: Request, body: InviteBody, admin: dict = Depends(auth.current_admin)) -> dict:
-    inv = auth.create_invite(admin["id"], note=body.note)
+    if not body.name.strip():
+        raise HTTPException(400, "name is required")
+    inv = auth.create_invite(admin["id"], note=body.note, name=body.name, phone=body.phone)
     inv["link"] = f"{str(request.base_url).rstrip('/')}/app?invite={inv['code']}"
-    if body.phone:
-        from maxine.web.sms import send_invite
-        inv["sms"] = send_invite(inv["code"], body.phone, str(request.base_url), inviter=admin["username"])
+    first = body.name.strip().split()[0]
+    inv["message"] = f"Hey {first}, here's your invite to Maxine Machine (hockey picks). Open it and set a password: {inv['link']}"
+    inv["sms_url"] = _sms_url(inv["phone"], inv["message"])
     return inv
 
 
 @app.get("/api/admin/invites")
-def get_invites(admin: dict = Depends(auth.current_admin)) -> dict:
-    return {"invites": auth.list_invites()}
+def get_invites(request: Request, admin: dict = Depends(auth.current_admin)) -> dict:
+    out = []
+    for i in auth.list_invites():
+        link = f"{str(request.base_url).rstrip('/')}/app?invite={i['code']}"
+        first = (i.get("name") or "").split()[0] if i.get("name") else "there"
+        msg = f"Hey {first}, here's your invite to Maxine Machine (hockey picks). Open it and set a password: {link}"
+        out.append({**i, "link": link, "message": msg, "sms_url": _sms_url(i.get("phone"), msg)})
+    return {"invites": out}
 
 
 @app.delete("/api/admin/invites/{code}")
