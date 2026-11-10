@@ -302,11 +302,16 @@ def evaluation(user: dict = Depends(auth.current_user)) -> dict:
     return data
 
 
-@app.get("/api/ladder/games")
-def ladder_games(user: dict = Depends(auth.current_user)) -> dict:
+@app.get("/api/ladder/lines")
+def ladder_lines(user: dict = Depends(auth.current_user)) -> dict:
+    from maxine import picks
     row = get_kv("ladder_state")
-    state = json.loads(row["value"]) if row else {}
-    return {"games": state.get("games", [])}
+    if not row:
+        return {"games": [], "error": "no Ladder yet: run the full formula first"}
+    try:
+        return json.loads(json.dumps(picks.ladder_lines(json.loads(row["value"])), default=jobs._clean))
+    except RuntimeError as e:
+        return {"games": [], "error": str(e)}
 
 
 @app.post("/api/ladder/my-teams")

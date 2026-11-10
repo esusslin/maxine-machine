@@ -284,6 +284,38 @@ def _ladder_legs(state: dict, payload: dict, fx: pd.DataFrame) -> pd.DataFrame:
     return ladder.legs(payload, fx, p_ml, prices, cals)
 
 
+def ladder_lines(state: dict) -> dict:
+    """Every moneyline and puck line offered at BOTH Bovada and DraftKings for today's games, per team, with
+    each book's price and the blended chance, from the last pulled lines (no credits). For the Ladder
+    playground: the page multiplies the legs you choose."""
+    path = state.get("alt_path")
+    if not path:
+        raise RuntimeError("no lines yet: run the full formula or refresh the Ladder first")
+    payload = json.loads(open(path).read())
+    fx = pd.DataFrame(state["games"])
+    fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
+    lg = _ladder_legs(state, payload, fx)
+    lg = lg[lg["kind"].isin(["moneyline", "puck line"])] if len(lg) else lg
+    joint = ladder._joint_legs(lg, ladder.BET_BOOKS) if len(lg) else pd.DataFrame()
+    games = []
+    for g in state["games"]:
+        teams = {}
+        for team in (g["away"], g["home"]):
+            rows = joint[(joint["game_id"] == g["game_id"]) & (joint["selection"].str.split().str[0] == team)] \
+                if len(joint) else joint
+            opts = []
+            for r in rows.itertuples():
+                order = 0.0 if r.kind == "moneyline" else float(r.selection.split()[1])
+                opts.append({"selection": r.selection, "kind": r.kind, "order": order,
+                             "label": "to win" if r.kind == "moneyline" else r.selection.split()[1],
+                             "prices": {b: float(x) for b, x in zip(ladder.BET_BOOKS, r.prices)},
+                             "p": float(r.p_use), "p_model": float(r.p_model), "p_market": float(r.p_market)})
+            teams[team] = sorted(opts, key=lambda o: o["order"])
+        games.append({**{k: g[k] for k in ("game_id", "home", "away", "start_utc")}, "teams": teams})
+    return {"priced_at": payload.get("taken_at"), "books": list(ladder.BET_BOOKS),
+            "target": [ladder.TARGET_SHORT, ladder.TARGET_LONG], "games": games}
+
+
 def ladder_my_teams(state: dict, teams: list[dict]) -> dict:
     """teams: [{game_id, team}] -> the best way to pad exactly those teams (one leg each: moneyline or any puck
     line) into the window at both books, from the last pulled lines (no credits). If nothing fits, the

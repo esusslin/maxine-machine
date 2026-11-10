@@ -137,21 +137,18 @@ The best available price and its book are recorded.
 5. Price: the single book that offers every leg at the best combined price; if none has them all, the best
    price per leg, marked "mixed books".
 
-### 10. Ladder (closest thing to a lock at −120 to −140 at both Bovada and DraftKings)
+### 10. Ladder (parlay playground at Bovada and DraftKings)
 
-1. Main and alternate moneyline, puck lines and totals for today's games from six books: Bovada, DraftKings,
-   FanDuel, BetMGM, Caesars, ESPN Bet. One request per game; up to 10 books cost the same as one (about 5
-   credits a game). Whole-number lines are skipped (they can push).
-2. **Shared lines only:** a line is used only if 3+ books offer it and at least half of the books quoting that
-   game do. One-book lines (e.g. a 9.5 total) are dropped.
-3. Chance of each leg: moneyline from the win model; puck lines and totals from the goal model's score grid,
+1. Main and alternate moneyline and puck lines for today's games, pulled with the 2 PM run (or **Refresh
+   prices now**, about 5 credits a game). Only lines **both** Bovada and DraftKings offer are listed.
+2. Pick a team in any game, then step its line with − / +: −1.5, to win, +1.5, +2.5, +3.5…
+3. Each leg's chance: moneyline from the win model; puck lines from the goal model's score grid,
    **calibrated line by line** on past results (the grid underrates 3+ goal margins, so e.g. +2.5 is pulled
    down from 87% to about 82%), then **blended with the market** by leg type as in the Parlays tab.
-4. One leg per game, every 2- to 5-game combination whose combined price is between −140 and −120 at
-   **both** Bovada and DraftKings, with the same legs at each. Exact search with pruning.
-5. **Best, 2nd best, 3rd best** = highest chance to hit, each on a different set of games, shown with the
-   price at both books. At a near-fixed price the highest
-   chance is also the best value. Each shows chance to hit, break-even (54.5% at −120, 58.3% at −140) and expected value.
+4. The slip shows the price at both books (green inside −120 to −140), chance to hit (legs multiplied),
+   break-even, expected value and the $10 payout, live as you change lines. No credits.
+5. **Suggest padding**: for the teams you picked, the lines with the best chance of all hitting that land inside
+   −120 to −140 at both books (exact search); if none do, the nearest option on each side.
 
 ### 11. Tracking
 
@@ -230,7 +227,7 @@ src/maxine/
   live_markets.py  live odds -> no-margin market probabilities
   picks.py         the daily run: board and picks
   parlays.py       best-chance parlays
-  ladder.py        Ladder: most likely parlay near -130 at Bovada or DraftKings (shared alternate lines)
+  ladder.py        Ladder: lines at both books, blended chances, padding search
   paper.py         paper bets: store, closing price, grade
   web/             jobs, auth, app database
 server.py          FastAPI app + scheduler

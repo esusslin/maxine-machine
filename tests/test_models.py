@@ -228,3 +228,21 @@ def test_ladder_my_teams(tmp_path):
     assert all(-140 <= a <= -120 for a in o["prices"].values())
     bad = picks.ladder_my_teams(state, [{"game_id": 1, "team": "BOS"}, {"game_id": 2, "team": "XXX"}])
     assert bad["options"] == [] and "XXX" in bad["error"]
+
+
+def test_ladder_lines_for_playground(tmp_path):
+    import json
+    import pandas as pd
+    from maxine import picks
+    path = tmp_path / "alt.json"
+    path.write_text(json.dumps({"taken_at": "2026-11-10T21:00:00Z", **_ladder_payload()}))
+    t = (pd.Timestamp.now(tz="UTC") + pd.Timedelta(hours=3)).isoformat()
+    state = {"games": [{"game_id": 1, "home": "NYR", "away": "BOS", "start_utc": t, "event_id": "e0"}],
+             "p_ml": {"1": 0.55}, "lam": {"1": [3.1, 2.9]}, "gm": [1.37, 0.36, 0.0, 0.9],
+             "line_cals": [["total", 5.5, 0.0, 1.0], ["spread", 1.5, 0.0, 1.0]], "alt_path": str(path)}
+    out = picks.ladder_lines(state)
+    bos = out["games"][0]["teams"]["BOS"]
+    assert [o["label"] for o in bos] == ["to win", "+1.5", "+2.5"]          # ordered: to win, then padding
+    assert set(bos[2]["prices"]) == {"bovada", "draftkings"} and bos[2]["prices"]["bovada"] == 1.20
+    assert bos[0]["p"] < bos[1]["p"] < bos[2]["p"]                          # more padding, more likely
+    assert [o["label"] for o in out["games"][0]["teams"]["NYR"]] == ["-2.5", "-1.5", "to win"]

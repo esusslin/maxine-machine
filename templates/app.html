@@ -319,15 +319,77 @@
 
   <!-- ============ ladder ============ -->
   <div x-show="tab==='ladder'" class="px-4 space-y-2">
-    <p class="text-[11px] text-slate-500" x-show="ladder.updated_at"
-       x-text="'Prices as of '+(ladder.priced_at?new Date(ladder.priced_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' ('+ago(ladder.priced_at)+')':ago(ladder.updated_at))+' · '+(ladder.shared_lines||0)+' shared lines (of '+(ladder.lines||0)+') from '+(ladder.books||[]).length+' books in '+(ladder.games||0)+' games · priced at '+(ladder.bet_books||[]).map(bookName).join(' and ')+' · target '+((ladder.target||[-140,-120])[0])+' to '+((ladder.target||[-140,-120])[1])"></p>
+    <p class="text-[11px] text-slate-500" x-show="lines.priced_at"
+       x-text="'Prices as of '+new Date(lines.priced_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' ('+ago(lines.priced_at)+') · lines offered at both Bovada and DraftKings'"></p>
     <div class="flex items-center gap-2" x-show="user.role==='admin'">
       <button @click="refreshLadder()" class="py-1.5 px-3 rounded border border-slate-600 text-xs" :disabled="ladderBusy"
               x-text="ladderBusy ? 'Refreshing…' : 'Refresh prices now'"></button>
-      <span class="text-[11px] text-slate-500">Re-pulls the lines for games not yet started and re-ranks (about 5 credits a game). Prices move: refresh right before you bet.</span>
+      <span class="text-[11px] text-slate-500">About 5 credits a game. Prices move: refresh right before you bet.</span>
     </div>
-    <p class="text-sm text-amber-300 card p-3" x-show="ladder.error" x-text="'Lines could not be read: '+ladder.error"></p>
-    <p class="text-sm text-slate-500 card p-4" x-show="!(ladder.options||[]).length && !ladder.error">No parlay in the target range yet. Built with the 2:00 PM run, or Admin → Run full formula.</p>
+    <p class="text-sm text-amber-300 card p-3" x-show="lines.error" x-text="lines.error"></p>
+
+    <p class="text-sm font-semibold pt-1">My teams</p>
+    <p class="text-[11px] text-slate-500 -mt-1">Pick teams and move their lines anywhere with − / +; the window is only a guide (green).</p>
+
+    <!-- the slip -->
+    <div class="card p-3 sticky top-0 z-10" x-show="slipLegs().length">
+      <template x-if="slipLegs().length">
+        <div>
+          <div class="flex items-baseline justify-between">
+            <p class="text-sm font-semibold" x-text="slipLegs().length+'-leg parlay'"></p>
+            <p class="text-sm">
+              <template x-for="b in (lines.books||[])" :key="b">
+                <span class="ml-2" :class="inWindow(slipSummary().prices[b]) ? 'text-emerald-400' : 'text-slate-200'"
+                      x-text="american(slipSummary().prices[b])+' '+bookName(b)"></span>
+              </template>
+            </p>
+          </div>
+          <p class="text-[12px] text-slate-400"
+             x-text="'Chance to hit: '+pct(slipSummary().p)+' (model alone '+pct(slipSummary().p_model)+') · needs '+pct(1/slipSummary().best)+' to break even at '+bookName(slipSummary().book)+' · '+(slipSummary().ev>=0?'+':'')+pct(slipSummary().ev)+' expected value · $10 pays $'+(10*slipSummary().best).toFixed(2)"></p>
+          <p class="text-[11px]" :class="slipSummary().both ? 'text-emerald-400' : 'text-slate-500'"
+             x-text="slipSummary().both ? 'Inside -120 to -140 at both books' : 'Green = inside -120 to -140 at that book'"></p>
+          <div class="flex gap-2 mt-2">
+            <button @click="suggestPadding()" class="py-1 px-3 rounded border border-slate-600 text-xs" :disabled="myBusy || slipLegs().length<2"
+                    x-text="myBusy ? 'Working…' : 'Suggest padding'"></button>
+            <button @click="slip={}" class="py-1 px-3 rounded border border-slate-700 text-xs text-slate-400">Clear</button>
+            <span class="text-[11px] text-amber-300 self-center" x-text="myMsg"></span>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- games: pick a team, then step its line -->
+    <p class="text-sm text-slate-500 card p-4" x-show="!(lines.games||[]).length && !lines.error">No lines yet. Admin → Run full formula.</p>
+    <template x-for="g in (lines.games||[])" :key="g.game_id">
+      <div class="card p-3">
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-[12px] text-slate-400" x-text="g.away+' @ '+g.home+' · '+when(g.start_utc)"></p>
+          <div class="flex rounded border border-slate-700 overflow-hidden text-[12px]">
+            <template x-for="t in [g.away, g.home]" :key="t">
+              <button @click="pickTeam(g, t)" class="px-2 py-1" :disabled="!(g.teams[t]||[]).length"
+                      :class="(slip[g.game_id]||{}).team===t ? 'bg-emerald-700 text-white' : ((g.teams[t]||[]).length ? 'text-slate-300' : 'text-slate-600')"
+                      x-text="t + (t===g.home ? ' (H)' : '')"></button>
+            </template>
+          </div>
+        </div>
+        <template x-if="slip[g.game_id]">
+          <div class="flex items-center justify-between gap-2 mt-2">
+            <div class="flex items-center gap-1">
+              <button @click="step(g.game_id,-1)" class="w-7 h-7 rounded border border-slate-600">−</button>
+              <p class="text-sm w-24 text-center" x-text="legOf(g.game_id).selection"></p>
+              <button @click="step(g.game_id,1)" class="w-7 h-7 rounded border border-slate-600">+</button>
+            </div>
+            <p class="text-[11px] text-slate-400 text-right"
+               x-text="Object.entries(legOf(g.game_id).prices).map(([b,x])=>american(x)+' '+bookName(b).slice(0,3)).join(' / ')+' · chance '+pct(legOf(g.game_id).p,0)+' (model '+pct(legOf(g.game_id).p_model,0)+', market '+pct(legOf(g.game_id).p_market,0)+')'"></p>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <!-- suggestions: the three most likely parlays inside the window at both books -->
+    <p class="text-sm font-semibold pt-3">Suggestions</p>
+    <p class="text-[11px] text-slate-500 -mt-1">The three most likely 2- to 5-leg parlays inside −120 to −140 at both books, each on different games. Tap "Load into My teams" to tweak one.</p>
+    <p class="text-sm text-slate-500 card p-4" x-show="!(ladder.options||[]).length">No suggestion lands inside the window at both books right now.</p>
     <template x-for="o in (ladder.options||[])" :key="o.rank">
       <div class="card p-3" :class="o.rank===1 ? 'tierA' : 'tierC'">
         <div class="flex items-baseline justify-between">
@@ -335,59 +397,18 @@
           <p class="text-sm" x-text="Object.entries(o.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b)).join(' · ')"></p>
         </div>
         <p class="text-[12px] text-slate-400"
-           x-text="'Chance to hit: '+pct(o.p_model)+' (model alone '+pct(o.p_model_only)+') · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value'+(o.p_book==null?'':' · the book\'s own odds (no margin): '+pct(o.p_book))"></p>
-        <p class="text-[11px] text-slate-500 mb-2" x-text="'Inside the window at both books. Chance, break-even and value at the better price ('+bookName(o.book)+').'"></p>
+           x-text="'Chance to hit: '+pct(o.p_model)+' (model alone '+pct(o.p_model_only)+') · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value at '+bookName(o.book)"></p>
         <template x-for="l in o.legs" :key="l.game_id">
           <div class="py-1 border-t border-slate-800 flex justify-between gap-2">
             <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home+' '+when(l.start_utc)"></span></p>
-            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="Object.entries(l.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b).slice(0,3)).join(' / ')+' · chance '+pct(l.p_model,0)+' (model '+pct(l.p_model_only,0)+', market '+pct(l.p_market,0)+') · '+l.books_offering+' books'"></p>
+            <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="Object.entries(l.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b).slice(0,3)).join(' / ')+' · chance '+pct(l.p_model,0)"></p>
           </div>
         </template>
+        <button @click="loadOption(o)" class="mt-2 py-1 px-3 rounded border border-slate-600 text-xs">Load into My teams</button>
       </div>
     </template>
-    <!-- my teams: you pick the teams, the model pads them -->
-    <div class="card p-3 space-y-2">
-      <div class="flex items-baseline justify-between">
-        <p class="text-sm font-semibold">My teams</p>
-        <p class="text-[11px] text-slate-500" x-text="Object.keys(myTeams).length+' picked · 2 to 5'"></p>
-      </div>
-      <p class="text-[11px] text-slate-500">Tap the teams you like (one per game). The model picks how to pad each one (moneyline, +1.5, +2.5, -1.5…) for the best chance of all of them hitting, inside -120 to -140 at both Bovada and DraftKings. Uses the last pulled prices; no credits.</p>
-      <div class="flex flex-wrap gap-1.5">
-        <template x-for="g in ladderGames" :key="g.game_id">
-          <div class="flex rounded border border-slate-700 overflow-hidden text-[12px]">
-            <template x-for="t in [g.away, g.home]" :key="t">
-              <button @click="toggleTeam(g.game_id, t)" class="px-2 py-1"
-                      :class="myTeams[g.game_id]===t ? 'bg-emerald-700 text-white' : 'text-slate-300'"
-                      x-text="t + (t===g.home ? ' (H)' : '')"></button>
-            </template>
-          </div>
-        </template>
-      </div>
-      <button @click="padMyTeams()" :disabled="Object.keys(myTeams).length<2 || myBusy"
-              class="py-1.5 px-3 rounded bg-emerald-600 text-white text-xs disabled:opacity-40"
-              x-text="myBusy ? 'Working…' : 'Pad my teams'"></button>
-      <p class="text-sm text-amber-300" x-show="myResult.error" x-text="myResult.error"></p>
-      <p class="text-[12px] text-amber-300" x-show="myResult.options && myResult.inside_window===false"
-         x-text="'These teams cannot land inside -120 to -140 at both books. Nearest options:'"></p>
-      <template x-for="o in (myResult.options||[])" :key="o.rank">
-        <div class="border-t border-slate-800 pt-2">
-          <div class="flex items-baseline justify-between">
-            <p class="text-sm" x-text="o.legs_n+' legs'"></p>
-            <p class="text-sm" x-text="Object.entries(o.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b)).join(' · ')"></p>
-          </div>
-          <p class="text-[12px] text-slate-400"
-             x-text="'Chance to hit: '+pct(o.p_model)+' (model alone '+pct(o.p_model_only)+') · needs '+pct(o.breakeven)+' to break even · '+(o.ev>=0?'+':'')+pct(o.ev)+' expected value at '+bookName(o.book)"></p>
-          <template x-for="l in o.legs" :key="l.game_id">
-            <div class="py-1 flex justify-between gap-2">
-              <p class="text-[12px]"><span x-text="l.selection"></span> <span class="text-slate-500" x-text="'· '+l.away+' @ '+l.home"></span></p>
-              <p class="text-[11px] text-slate-400 whitespace-nowrap" x-text="Object.entries(l.prices||{}).map(([b,a])=>(a>0?'+':'')+a+' '+bookName(b).slice(0,3)).join(' / ')+' · chance '+pct(l.p_model,0)"></p>
-            </div>
-          </template>
-        </div>
-      </template>
-    </div>
 
-    <p class="text-[11px] text-slate-500 pt-1">How it works: main and alternate moneyline, puck lines and totals for today from six books (Bovada, DraftKings, FanDuel, BetMGM, Caesars, ESPN Bet). Only shared lines are used: offered by 3+ books and at least half of the books quoting that game, so one-book lines like a 9.5 total are dropped. One leg per game, every 2- to 5-game combination priced between -140 and -120 at both Bovada and DraftKings with the same legs. Ranked by chance to hit; each option uses a different set of games. Each leg's chance blends the model with the market by leg type: puck line underdog 60% model, moneyline 40%, puck line favourite 25%, totals 20%. Alternate lines are priced from the goal model, calibrated line by line on past results.</p>
+    <p class="text-[11px] text-slate-500 pt-1">How it works: pick a team in any game, then use − / + to move its line (−1.5, to win, +1.5, +2.5, +3.5…). Only lines both Bovada and DraftKings offer are listed. The parlay price is each book's prices multiplied; a book's number turns green inside −120 to −140. Each leg's chance blends the model with the market (puck line underdog 60% model, moneyline 40%, puck line favourite 25%); chance to hit multiplies the legs. Suggest padding picks the lines for your teams with the best chance that land inside −120 to −140 at both books. Suggestions below are the three most likely parlays inside the window at both books (they may include totals). Uses the last pulled prices; no credits.</p>
   </div>
 
   <!-- ============ model ============ -->
@@ -532,13 +553,13 @@ function algo(){return{
   inviteCode:'', inviteValid:false, inviteReason:'',
   resetToken:'', resetValid:false, resetReason:'', forgot:false, forgotId:'', forgotMsg:'',
   profilePhone:'', profileMsg:'', account:false, showGlossary:false,
-  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, ladderBusy:false, ladderGames:[], myTeams:{}, myResult:{}, myBusy:false, evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
+  board:{records:[]}, algo:{}, paper:[], paperRec:{}, paperByLine:{}, paperByMarket:{}, showUnproven:false, parlays:{}, ladder:{}, ladderBusy:false, lines:{games:[]}, slip:{}, myBusy:false, myMsg:'', evaluation:{}, model:{}, status:{}, invites:[], jobMsg:'',
 
   tabs(){ const t=[{key:'board',label:'Board'},{key:'picks',label:'Picks'},{key:'parlays',label:'Parlays'},{key:'ladder',label:'Ladder'},{key:'model',label:'Model'}];
           if(this.user.role==='admin') t.push({key:'admin',label:'Admin'}); return t },
   tabTitle(){ return {board:'Board',picks:'Paper picks',parlays:'Parlays',ladder:'Ladder',model:'Model',admin:'Admin'}[this.tab] },
   subtitle(){ return {board:'Today\'s games, model vs market at 2 PM PT',picks:'Game-day picks, graded against the close',parlays:'Best chance to hit, 3 to 8 legs',
-    ladder:'Closest thing to a lock at -120 to -140 at both Bovada and DraftKings (2-5 legs)',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
+    ladder:'Build a parlay: pick teams, move their lines, see both books',model:'Backtest and CLV scorecard',admin:'Jobs, credits, invites'}[this.tab] },
   glossary(){
     if(this.tab==='board') return [
       {term:'model / market',def:'Probability of the listed selection. Market is the median across books with the bookmaker margin removed.'},
@@ -616,23 +637,61 @@ function algo(){return{
     if(this.tab==='board') this.board=await this.get('/api/board');
     if(this.tab==='picks'){ this.evaluation=await this.get('/api/evaluation'); const d=await this.get('/api/paper'); this.paper=d.picks||[]; this.paperRec=d.record||{}; this.paperByLine=d.by_line||{}; this.paperByMarket=d.by_market||{} }
     if(this.tab==='parlays') this.parlays=await this.get('/api/parlays');
-    if(this.tab==='ladder'){ this.ladder=await this.get('/api/ladder'); this.ladderGames=(await this.get('/api/ladder/games')).games||[] }
+    if(this.tab==='ladder'){ this.ladder=await this.get('/api/ladder'); this.lines=await this.get('/api/ladder/lines') }
     if(this.tab==='model'){ this.model=await this.get('/api/model'); this.algo=await this.get('/api/algorithm') }
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[] }
     this.fresh=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   },
-  toggleTeam(gid, team){
-    const m={...this.myTeams};
-    if(m[gid]===team) delete m[gid]; else m[gid]=team;
-    this.myTeams=m;
+  gameOf(gid){ return (this.lines.games||[]).find(g=>g.game_id==gid) },
+  pickTeam(g, team){
+    const sl={...this.slip};
+    if((sl[g.game_id]||{}).team===team){ delete sl[g.game_id] }
+    else {
+      const opts=g.teams[team]||[]; if(!opts.length) return;
+      let i=opts.findIndex(o=>o.label==='+1.5'); if(i<0) i=opts.findIndex(o=>o.kind==='moneyline'); if(i<0) i=0;
+      sl[g.game_id]={team, idx:i};
+    }
+    this.slip=sl; this.myMsg='';
   },
-  async padMyTeams(){
-    this.myBusy=true; this.myResult={};
-    const teams=Object.entries(this.myTeams).map(([game_id,team])=>({game_id:Number(game_id),team}));
-    const r=await fetch('/api/ladder/my-teams',{method:'POST',headers:{...this.hdr(),'Content-Type':'application/json'},body:JSON.stringify({teams})});
-    const d=await r.json();
-    this.myResult=r.ok ? d : {error:d.detail||'failed'};
-    this.myBusy=false;
+  step(gid, d){
+    const s=this.slip[gid], opts=this.gameOf(gid).teams[s.team];
+    this.slip={...this.slip, [gid]:{team:s.team, idx:Math.max(0, Math.min(opts.length-1, s.idx+d))}};
+  },
+  legOf(gid){ const s=this.slip[gid]; return this.gameOf(gid).teams[s.team][s.idx] },
+  slipLegs(){ return Object.keys(this.slip).filter(gid=>this.gameOf(gid)).map(gid=>this.legOf(gid)) },
+  inWindow(x){ return x>=1+100/140 && x<=1+100/120 },
+  slipSummary(){
+    const legs=this.slipLegs(), prices={};
+    for(const b of (this.lines.books||[])) prices[b]=legs.reduce((a,l)=>a*l.prices[b],1);
+    const book=Object.keys(prices).reduce((a,b)=>prices[b]>prices[a]?b:a, Object.keys(prices)[0]);
+    const p=legs.reduce((a,l)=>a*l.p,1), pm=legs.reduce((a,l)=>a*l.p_model,1);
+    return {prices, book, best:prices[book], p, p_model:pm, ev:p*prices[book]-1,
+            both:Object.values(prices).every(x=>this.inWindow(x))};
+  },
+  loadOption(o){
+    const sl={};
+    for(const l of o.legs){
+      const g=this.gameOf(l.game_id); if(!g) continue;
+      const team=l.selection.split(' ')[0], opts=g.teams[team]||[];
+      const i=opts.findIndex(x=>x.selection===l.selection);
+      if(i>=0) sl[l.game_id]={team, idx:i};
+    }
+    this.slip=sl; this.myMsg=Object.keys(sl).length<o.legs.length ? 'Some legs are totals and stay out of My teams.' : '';
+    window.scrollTo({top:0,behavior:'smooth'});
+  },
+  async suggestPadding(){
+    this.myBusy=true; this.myMsg='';
+    const teams=Object.entries(this.slip).map(([game_id,s])=>({game_id:Number(game_id),team:s.team}));
+    const r=await fetch('/api/ladder/my-teams',{method:'POST',headers:this.hdr(),body:JSON.stringify({teams})});
+    const d=await r.json(); this.myBusy=false;
+    if(!r.ok || !(d.options||[]).length){ this.myMsg=d.detail||d.error||'nothing found'; return }
+    const o=d.options[0], sl={...this.slip};
+    for(const l of o.legs){
+      const opts=this.gameOf(l.game_id).teams[sl[l.game_id].team];
+      const i=opts.findIndex(x=>x.selection===l.selection); if(i>=0) sl[l.game_id]={...sl[l.game_id], idx:i};
+    }
+    this.slip=sl;
+    if(d.inside_window===false) this.myMsg='These teams cannot land in the window at both books; showing the nearest.';
   },
   async refreshLadder(){
     this.ladderBusy=true;
@@ -643,6 +702,7 @@ function algo(){return{
       const d=await this.get('/api/ladder');
       if(d.updated_at!==before){ this.ladder=d; break }
     }
+    this.lines=await this.get('/api/ladder/lines');
     this.ladderBusy=false;
   },
   async runJob(name){
