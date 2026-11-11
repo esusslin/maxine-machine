@@ -188,8 +188,10 @@
               <span x-show="!r.is_pick && r.covered_by" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400"
                     x-text="'same bet as the '+marketLabel(r.covered_by).toLowerCase()+' pick'"></span>
             </div>
-            <p x-show="r.p_market!==null" class="text-[11px] text-slate-400"
-               x-text="'model '+pct(r.p_model)+' · market '+pct(r.p_market)+' · edge '+(r.edge>=0?'+':'')+pct(r.edge)+' · best '+dec(r.best_price)+' ('+american(r.best_price)+') '+bookName(r.best_book)"></p>
+            <p x-show="r.p_market!==null" class="text-[11px] text-slate-300"
+               x-text="r.selection+'  '+american(r.best_price)+' ('+bookName(r.best_book)+') · model '+pct(r.p_model)+' · market '+pct(r.p_market)+' · edge +'+pct(r.edge)"></p>
+            <p x-show="r.p_market!==null && r.other_selection" class="text-[11px] text-slate-500"
+               x-text="r.other_selection+'  '+american(r.other_best_price)+' ('+bookName(r.other_best_book)+') · model '+pct(r.other_p_model)+' · market '+pct(r.other_p_market)"></p>
             <p x-show="r.p_market===null" class="text-[11px] text-slate-500" x-text="'model '+pct(r.p_model)+' home'"></p>
           </div>
         </template>
@@ -331,7 +333,7 @@
     <p class="text-sm text-amber-300 card p-3" x-show="lines.error" x-text="lines.error"></p>
 
     <p class="text-sm font-semibold pt-1">My teams</p>
-    <p class="text-[11px] text-slate-500 -mt-1">In each game pick a team, or Over / Under, and move the line with − / + (+ adds cushion); the window is only a guide (green).</p>
+    <p class="text-[11px] text-slate-500 -mt-1">In each game pick a team, or Over / Under, and move the line with − / + (+ adds cushion); the window is only a guide (green). Odds shown as Bovada / DraftKings (chance).</p>
 
     <!-- the slip -->
     <div class="card p-3 sticky top-0 z-10" x-show="slipLegs().length">
@@ -373,6 +375,12 @@
                       x-text="t + (t===g.home ? ' (H)' : '')"></button>
             </template>
           </div>
+        </div>
+        <div class="mt-1 text-[11px] text-slate-400 space-y-0.5">
+          <template x-for="row in mainOdds(g)" :key="row.k">
+            <p><span class="text-slate-300" x-text="row.label"></span> <span x-text="row.text"></span></p>
+          </template>
+          <p class="text-slate-600" x-show="!mainOdds(g).length">No lines at both books for this game.</p>
         </div>
         <template x-if="slip[g.game_id]">
           <div class="flex items-center justify-between gap-2 mt-2">
@@ -688,6 +696,27 @@ function algo(){return{
     if(this.tab==='model'){ this.model=await this.get('/api/model'); this.algo=await this.get('/api/algorithm') }
     if(this.tab==='admin'){ this.status=await this.get('/api/admin/status'); this.invites=(await this.get('/api/admin/invites')).invites||[]; this.members=(await this.get('/api/admin/users')).users||[] }
     this.fresh=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  },
+  mainOdds(g){
+    // the standard lines for each side, priced at both books (DraftKings / Bovada), before you pick anything
+    const fmt=o=>Object.entries(o.prices).map(([b,x])=>american(x)).join(' / ')+' ('+pct(o.p,0)+')';
+    const american=x=>this.american(x), pct=(x,d)=>this.pct(x,d), out=[];
+    for(const t of [g.away, g.home]){
+      const opts=g.teams[t]||[], parts=[];
+      // main puck line: the favourite gives 1.5, the underdog gets 1.5
+      const ml=opts.find(o=>o.kind==='moneyline'), fav=ml ? ml.p>=0.5 : false;
+      const pl=opts.find(o=>o.label===(fav?'-1.5':'+1.5')) || opts.find(o=>o.label==='+1.5'||o.label==='-1.5');
+      if(ml) parts.push('to win '+fmt(ml));
+      if(pl) parts.push(pl.label+' '+fmt(pl));
+      if(parts.length) out.push({k:t, label:t+(t===g.home?' (H)':''), text:parts.join(' · ')});
+    }
+    const ov=g.teams['Over']||[], un=g.teams['Under']||[];
+    if(ov.length){
+      const o=ov.reduce((b,x)=>Math.abs(x.p-0.5)<Math.abs(b.p-0.5)?x:b, ov[0]);
+      const u=un.find(x=>x.label===o.label);
+      out.push({k:'tot', label:'Total '+o.label, text:'Over '+fmt(o)+(u?' · Under '+fmt(u):'')});
+    }
+    return out;
   },
   gameOf(gid){ return (this.lines.games||[]).find(g=>g.game_id==gid) },
   pickTeam(g, team){

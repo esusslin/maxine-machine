@@ -86,7 +86,8 @@ def run_picks() -> dict:
         board = r["board"]
         cols = ["game_id", "game_date", "start_utc", "home", "away", "market", "selection", "line", "side",
                 "p_model", "p_market", "edge", "min_edge", "best_price", "best_book", "med_price", "books",
-                "clean", "early", "line_type", "validated", "is_pick", "home_goalie", "away_goalie", "covered_by"]
+                "clean", "early", "line_type", "validated", "is_pick", "home_goalie", "away_goalie", "covered_by",
+                "other_selection", "other_p_model", "other_p_market", "other_best_price", "other_best_book"]
         records = [] if board.empty else [{c: _clean(row.get(c)) for c in cols}
                                           for row in board.to_dict("records")]
         set_kv("board", json.dumps({"records": records, "min_edges": settings.MIN_EDGES,

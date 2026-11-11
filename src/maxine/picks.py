@@ -105,14 +105,19 @@ def _match(df: pd.DataFrame, f) -> pd.DataFrame:
 def _two_way_row(base: dict, market: str, mk, p_model_a: float) -> dict:
     a = p_model_a >= mk.p_a
     line = float(mk.line)
-    if market == "h2h":
-        sel = base["home"] if a else base["away"]
-    elif market == "spreads":
-        team, tl = (base["home"], line) if a else (base["away"], -line)
-        sel = f"{team} {tl:+.1f}"
-    else:
-        sel = f"{'Over' if a else 'Under'} {line:g}"
+    def label(side_a: bool) -> str:
+        if market == "h2h":
+            return base["home"] if side_a else base["away"]
+        if market == "spreads":
+            team, tl = (base["home"], line) if side_a else (base["away"], -line)
+            return f"{team} {tl:+.1f}"
+        return f"{'Over' if side_a else 'Under'} {line:g}"
+    sel = label(a)
     return {**base, "market": market, "line": line, "side": "a" if a else "b", "selection": sel,
+            # the other side, so the board shows both teams (or over and under), not only the model's side
+            "other_selection": label(not a), "other_p_model": 1 - p_model_a if a else p_model_a,
+            "other_p_market": 1 - mk.p_a if a else mk.p_a,
+            "other_best_price": mk.best_b if a else mk.best_a, "other_best_book": mk.best_b_book if a else mk.best_a_book,
             "p_model": p_model_a if a else 1 - p_model_a, "p_market": mk.p_a if a else 1 - mk.p_a,
             "edge": abs(p_model_a - mk.p_a), "best_price": mk.best_a if a else mk.best_b,
             "best_book": mk.best_a_book if a else mk.best_b_book, "med_price": mk.med_a if a else mk.med_b,
