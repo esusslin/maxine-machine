@@ -21,6 +21,7 @@ import pandas as pd
 from maxine.blend import blend
 
 SIZES = range(3, 9)
+MIN_LEGS_SMALL_SLATE = 2      # with only 2 qualifying games, still show the 2-leg parlay
 
 
 def _label(market: str, side: str, home: str, away: str, line: float) -> str:
@@ -62,13 +63,21 @@ def _book_price(books: pd.DataFrame, leg) -> pd.Series:
     return m.groupby("book")["a" if leg.side == "a" else "b"].max()
 
 
+def diagnose(inputs: list[dict]) -> dict:
+    """Why a slate gives few or no parlays: games priced vs games with a qualifying leg."""
+    legs = candidate_legs(inputs) if inputs else pd.DataFrame()
+    return {"games_priced": int(legs["game_id"].nunique()) if len(legs) else 0,
+            "games_qualifying": int(len(best_leg_per_game(legs))) if len(legs) else 0}
+
+
 def build(inputs: list[dict], books: pd.DataFrame) -> list[dict]:
     legs = best_leg_per_game(candidate_legs(inputs))
     out = []
     if legs.empty:
         return out
     prices = [_book_price(books, leg) for leg in legs.itertuples()]
-    for n in SIZES:
+    sizes = list(SIZES) if len(legs) >= SIZES[0] else [MIN_LEGS_SMALL_SLATE]
+    for n in sizes:
         if n > len(legs):
             break
         top, pr = legs.head(n), prices[:n]

@@ -138,7 +138,7 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
     if today_only and not fx.empty:
         fx = fx[fx["game_date"].astype(str) == datetime.now(PACIFIC).date().isoformat()]
     empty = {"status": status, "board": pd.DataFrame(), "picks": pd.DataFrame(), "credits_remaining": None,
-             "parlays": []}
+             "parlays": [], "parlays_meta": {"games_priced": 0, "games_qualifying": 0, "games_today": 0}}
     if fx.empty:
         return empty
     fx["start_utc"] = pd.to_datetime(fx["start_utc"], utc=True)
@@ -226,6 +226,7 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
             for rec in out.to_dict("records"):
                 fh.write(json.dumps(rec, default=str) + "\n")
     parlay_list = parlays.build(leg_in, live_markets.book_rows(snap["path"]))
+    parlays_meta = {**parlays.diagnose(leg_in), "games_today": int(len(fx))}
     lad, lad_state = {"options": [], "legs": 0, "error": None}, None
     if ladder_feed:
         try:
@@ -233,6 +234,7 @@ def run(con, hours: int = 36, min_edge: dict | float | None = None, game_day: bo
         except Exception as e:  # noqa: BLE001 — the Ladder tab must never break the picks run
             lad["error"] = f"{type(e).__name__}: {e}"
     return {"status": status, "credits_remaining": credits, "board": board, "picks": picks, "parlays": parlay_list,
+            "parlays_meta": parlays_meta,
             "ladder": lad, "ladder_state": lad_state}
 
 

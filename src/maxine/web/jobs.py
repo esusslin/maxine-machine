@@ -92,7 +92,8 @@ def run_picks() -> dict:
                                           for row in board.to_dict("records")]
         set_kv("board", json.dumps({"records": records, "min_edges": settings.MIN_EDGES,
                                     "game_day_picks": settings.GAME_DAY_PICKS}))
-        set_kv("parlays", json.dumps({"parlays": r.get("parlays", [])}, default=_clean))
+        set_kv("parlays", json.dumps({"parlays": r.get("parlays", []), **(r.get("parlays_meta") or {})},
+                                     default=_clean))
         set_kv("ladder", json.dumps(r.get("ladder") or {"options": []}, default=_clean))
         if r.get("ladder_state"):
             set_kv("ladder_state", json.dumps(r["ladder_state"], default=_clean))

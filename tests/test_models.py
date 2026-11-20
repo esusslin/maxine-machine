@@ -275,3 +275,19 @@ def test_playground_total_order():
     assert [o["label"] for o in g["Under"]] == ["3.5", "4.5", "5.5", "6.5", "7.5"]
     assert all(a["p"] < b["p"] for a, b in zip(g["Over"], g["Over"][1:]))      # more cushion, more likely
     assert all(a["p"] < b["p"] for a, b in zip(g["Under"], g["Under"][1:]))
+
+
+def test_parlays_small_slate_and_diagnose():
+    import pandas as pd
+    from maxine import parlays
+    t = pd.Timestamp("2026-11-21T00:00Z")
+    inputs, books = [], []
+    for away, home, gid in [("DAL", "WSH", 1), ("STL", "NYR", 2)]:
+        inputs.append({"game_id": gid, "home": home, "away": away, "start_utc": t, "market": "spreads",
+                       "line": -1.5, "p_a": 0.30, "p_mkt_a": 0.33})
+        books.append({"home": home, "away": away, "commence": t, "market": "spreads", "line": -1.5,
+                      "book": "dk", "a": 2.9, "b": 1.40})
+    out = parlays.build(inputs, pd.DataFrame(books))
+    assert [p["legs_n"] for p in out] == [2]                        # 2 qualifying games: still a 2-leg parlay
+    assert parlays.diagnose(inputs) == {"games_priced": 2, "games_qualifying": 2}
+    assert parlays.diagnose([]) == {"games_priced": 0, "games_qualifying": 0}

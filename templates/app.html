@@ -301,7 +301,7 @@
   <!-- ============ parlays ============ -->
   <div x-show="tab==='parlays'" class="px-4 space-y-2">
     <p class="text-[11px] text-slate-500" x-show="parlays.updated_at" x-text="'Built '+ago(parlays.updated_at)+' with today\'s picks run'"></p>
-    <p class="text-sm text-slate-500 card p-4" x-show="!(parlays.parlays||[]).length">No parlays yet. Built with the 2:00 PM run, or Admin → Run full formula.</p>
+    <p class="text-sm text-slate-500 card p-4" x-show="!(parlays.parlays||[]).length" x-text="parlayEmptyReason()"></p>
     <template x-for="pl in (parlays.parlays||[])" :key="pl.legs_n">
       <div class="card p-3">
         <div class="flex items-baseline justify-between">
@@ -717,6 +717,14 @@ function algo(){return{
       out.push({k:'tot', label:'Total '+o.label, text:'Over '+fmt(o)+(u?' · Under '+fmt(u):'')});
     }
     return out;
+  },
+  parlayEmptyReason(){
+    const p=this.parlays||{};
+    if(!p.updated_at) return 'No parlays yet. Built with the 2:00 PM run, or Admin → Run full formula.';
+    if(p.games_today===undefined) return 'No parlays in the last run. Run Admin → Run full formula again to see why.';
+    if(!p.games_today) return 'No games left to price when the run happened ('+this.ago(p.updated_at)+'): today\'s games had started or none were scheduled. Run the full formula before the first puck drop.';
+    if(!p.games_priced) return p.games_today+' game(s) found, but none had odds posted yet. Run the full formula again closer to game time.';
+    return 'Only '+p.games_qualifying+' of '+p.games_priced+' priced game(s) had a leg the model rates at least as likely as the market; a parlay needs at least 2.';
   },
   gameOf(gid){ return (this.lines.games||[]).find(g=>g.game_id==gid) },
   pickTeam(g, team){
